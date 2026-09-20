@@ -1,10 +1,12 @@
 resource "aws_sqs_queue" "event_handler_dlq" {
-  name = "${var.environment}-pl8-event-handler-dlq"
+  name                      = "${var.environment}-pl8-event-handler-dlq"
+  message_retention_seconds = var.event_queue_message_retention_seconds
 }
 
 resource "aws_sqs_queue" "event_handler" {
   name                       = "${var.environment}-pl8-event-handler"
   visibility_timeout_seconds = var.event_queue_visibility_timeout_seconds
+  message_retention_seconds  = var.event_queue_message_retention_seconds
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.event_handler_dlq.arn

@@ -27,3 +27,8 @@ variable "event_queue_max_receive_count" {
   type        = number
   description = "Number of times a message may be received from the event-handler queue before moving to its DLQ"
 }
+
+variable "event_queue_message_retention_seconds" {
+  type        = number
+  description = "Message retention period for the event-handler queue and its DLQ"
+}
