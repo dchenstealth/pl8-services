@@ -1,0 +1,9 @@
+version = 1
+SPDX-PackageName = "pl8-services"
+SPDX-PackageSupplier = "Daniel Chen <danieljnchen@gmail.com>"
+SPDX-PackageDownloadLocation = "https://github.com/dchenstealth/pl8-services"
+
+[[annotations]]
+path = "**"
+SPDX-FileCopyrightText = "2026 Daniel Chen"
+SPDX-License-Identifier = "MIT"
