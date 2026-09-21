@@ -5,10 +5,9 @@ Infrastructure (and, eventually, Lambda code) for running
 
 ## Status
 
-This repo currently covers PL8's **infrastructure slice** only: the
-stateful and eventing backbone that PL8's Lambdas will attach to. The
-Lambda functions themselves (`pl8-interface`, `pl8-stream-handler`,
-`pl8-event-handler`) are a follow-up slice, not yet implemented here.
+This repo covers PL8's stateful and eventing backbone plus the
+`pl8-interface` Lambda. The `pl8-stream-handler` and `pl8-event-handler`
+Lambdas are follow-up slices, not yet implemented here.
 
 ## Resources
 
@@ -22,6 +21,22 @@ Managed with [OpenTofu](https://opentofu.org/):
   queue
 - An SQS queue (with a dead-letter queue) that a future event-handler
   Lambda will consume from
+- The `pl8-interface` Lambda (see below)
+
+## Lambda functions
+
+### pl8-interface
+
+The interface agents call directly through the Lambda `Invoke` API (IAM
+authenticated, no API Gateway), typically via `pl8-cli`. It validates each
+request and dispatches it onto [`pl8-base`](https://github.com/dchenstealth/pl8-base).
+See [`src/pl8-interface/README.md`](src/pl8-interface/README.md) for the
+request/response contract.
+
+Runs on the arm64 `python3.14` runtime as a zip package built with
+[uv](https://docs.astral.sh/uv/). The function is tagged
+`Type=PL8Interface`; invoke permission is granted against that tag outside
+this repo.
 
 ## Deployment
 
@@ -41,7 +56,11 @@ to `pl8-services` only (table capacity, queue settings, etc).
 
 ### Plan and apply
 
+Build the `pl8-interface` zip first; `infra/lambda.tf` reads
+`src/pl8-interface/dist/pl8-interface.zip` at plan time. Requires `uv`.
+
 ```bash
+src/pl8-interface/build.sh
 cd infra
 tofu init -backend-config <path-to-tfconfig>/<environment>.tfbackend
 tofu plan \

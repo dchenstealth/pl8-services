@@ -1,0 +1,24 @@
+[project]
+name = "pl8-interface"
+version = "0.1.0"
+description = "PL8's direct-invoke interface Lambda"
+requires-python = ">=3.14"
+dependencies = [
+    "pl8-base~=0.0.1",
+    "aws-lambda-powertools~=3.35.0",
+    "fastjsonschema~=2.22.2",
+    "pyyaml~=6.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "moto~=5.2.2",
+    "ruff~=0.16.8",
+    "pytest~=9.1.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

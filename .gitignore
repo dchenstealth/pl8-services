@@ -1,3 +1,7 @@
 *.tfstate
 *.tfstate.*
 .terraform/
+src/pl8-interface/build/
+src/pl8-interface/dist/
+.venv/
+__pycache__/
