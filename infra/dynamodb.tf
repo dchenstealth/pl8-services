@@ -27,15 +27,11 @@ resource "aws_dynamodb_table" "pl8_table" {
     type = "S"
   }
 
-  attribute {
-    name = "GSI1PK"
-    type = "S"
-  }
-
-  attribute {
-    name = "GSI1SK"
-    type = "S"
-  }
+  # GSI1PK/GSI1SK are NOT declared here. aws_dynamodb_global_secondary_index
+  # (below) adds them via its own UpdateTable call, whose key_schema already
+  # carries their attribute_type. Declaring them on the table too would put
+  # them in this resource's CreateTable call unused by any key schema here,
+  # which AWS rejects with "All attributes must be indexed".
 }
 
 resource "aws_dynamodb_global_secondary_index" "gsi1" {
