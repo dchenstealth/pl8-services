@@ -29,8 +29,12 @@ class EventManager:
     def __init__(self, pl8, logger):
         self._pl8 = pl8
         self._logger = logger
-        # Logs each failed record, with its traceback, at warning level.
-        self._processor = BatchProcessor(event_type=EventType.SQS, logger=logger)
+        # Logs each failed record, with its traceback, at warning level. An
+        # entirely failed batch is reported like any other rather than raised,
+        # so the function's Errors metric counts only crashes, not bad
+        # messages; the DLQ alarm covers those.
+        self._processor = BatchProcessor(event_type=EventType.SQS, logger=logger,
+                                         raise_on_entire_batch_failure=False)
 
     def handle_event(self, event, context=None):
         """Apply each SQS record's event, reporting failures per record.
@@ -38,8 +42,8 @@ class EventManager:
         Any exception fails only its own record. The handle_* methods are
         idempotent and tolerate late or duplicate delivery, so a failed
         record is simply redelivered, and after the queue's maxReceiveCount
-        it lands in the DLQ. If every record fails, the processor raises
-        BatchProcessingError and the whole batch is redelivered.
+        it lands in the DLQ. That holds even when every record fails: each
+        is reported, and the invocation still succeeds.
 
         Returns:
             dict: {"batchItemFailures": [...]} partial batch response

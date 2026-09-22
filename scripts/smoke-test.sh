@@ -68,7 +68,9 @@ cleanup() {
   local status=$?
   set +e
   local issue
-  for issue in "${issues[@]}"; do
+  # ${a[@]+...}: bash < 4.4 (e.g. macOS's /bin/bash) treats an empty array
+  # as unbound under set -u.
+  for issue in ${issues[@]+"${issues[@]}"}; do
     (invoke delete_issue "$(jq -nc --arg s "$space" --arg i "$issue" \
       '{space_id: $s, issue_id: $i}')") >/dev/null 2>&1
   done

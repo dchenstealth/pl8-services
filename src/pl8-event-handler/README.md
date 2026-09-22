@@ -30,8 +30,9 @@ Failed messages are redelivered after the queue's visibility timeout, and
 after `event_queue_max_receive_count` receives they move to the DLQ. The
 `handle_*` methods are idempotent, so redelivery and duplicates are safe.
 
-If every message in a batch fails, the invocation fails with
-`BatchProcessingError` and the whole batch is redelivered.
+A batch in which every message fails is reported the same way, not raised,
+so the function's `Errors` metric counts only crashes; failed messages show
+up in the DLQ and its alarm instead.
 
 Keep the queue's visibility timeout at six or more times this function's
 timeout.

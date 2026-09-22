@@ -1,7 +1,6 @@
 import json
 
 import pytest
-from aws_lambda_powertools.utilities.batch.exceptions import BatchProcessingError
 from conftest import sqs_record
 from pl8_base.errors import DDBInternalError
 from pl8_base.types import (
@@ -151,15 +150,15 @@ def test_unexpected_error_fails_only_its_record(mgr, event_manager, blocked_pair
     assert mgr.get_issue(space_id=SPACE, issue_id=b.issue_id).num_active_blockers == 0
 
 
-def test_entire_batch_failing_raises(mgr, event_manager, monkeypatch):
+def test_entire_batch_failing_reports_every_record(mgr, event_manager, monkeypatch):
     def boom(**kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(mgr, "handle_issue_done", boom)
     done = IssueDone(space_id=SPACE, issue_id="abc123").dict()
 
-    with pytest.raises(BatchProcessingError):
-        handle(event_manager, done, done)
+    assert handle(event_manager, done, done) == {"batchItemFailures": [
+        {"itemIdentifier": "msg-0"}, {"itemIdentifier": "msg-1"}]}
 
 
 def test_record_log_keys_do_not_outlive_the_batch(event_manager, logger):
