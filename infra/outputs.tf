@@ -19,11 +19,11 @@ output "pl8_event_handler_queue_arn" {
 }
 
 output "pl8_interface_function_name" {
-  value       = aws_lambda_function.pl8_interface.function_name
+  value       = module.pl8_interface.function_name
   description = "Name of the pl8-interface Lambda, for pl8-cli invoke configuration"
 }
 
 output "pl8_interface_function_arn" {
-  value       = aws_lambda_function.pl8_interface.arn
+  value       = module.pl8_interface.function_arn
   description = "ARN of the pl8-interface Lambda"
 }
