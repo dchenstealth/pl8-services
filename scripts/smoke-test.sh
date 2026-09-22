@@ -4,7 +4,7 @@
 #   1. A blocks B; A -> DONE; B must reach TODO.
 #   2. C blocks D; C deleted; the IssueBlocker must be swept and D reach TODO.
 #   3. Both DLQs must be empty.
-# Creates its own Space and deletes it (and its Issues) at the end.
+# Creates its own Space and deletes it (and its Issues) on exit, pass or fail.
 #
 # Usage: scripts/smoke-test.sh <environment>   (requires aws, jq)
 set -euo pipefail
@@ -14,7 +14,8 @@ function_name="${env}-pl8-interface"
 space="smoke-$(date +%s)"
 timeout_seconds=120
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+space_created=false
+issues=()
 
 invoke() {
   local operation="$1" params="$2"
@@ -60,6 +61,26 @@ wait_for() {
   echo "ok: $description"
 }
 
+# Best effort: deletes that fail (e.g. an Issue the test already deleted)
+# are skipped so the rest still run. Each runs in a subshell because invoke
+# exits on failure.
+cleanup() {
+  local status=$?
+  set +e
+  local issue
+  for issue in "${issues[@]}"; do
+    (invoke delete_issue "$(jq -nc --arg s "$space" --arg i "$issue" \
+      '{space_id: $s, issue_id: $i}')") >/dev/null 2>&1
+  done
+  if [[ "$space_created" == true ]]; then
+    (invoke delete_space "$(jq -nc --arg s "$space" '{space_id: $s}')") >/dev/null 2>&1 \
+      || echo "warning: could not delete Space $space" >&2
+  fi
+  rm -rf "$tmp"
+  exit "$status"
+}
+trap cleanup EXIT
+
 status_is() { [[ "$(issue_field "$1" status)" == "$2" ]]; }
 
 blockers_empty() {
@@ -69,10 +90,12 @@ blockers_empty() {
 
 invoke create_space "$(jq -nc --arg s "$space" \
   '{space_id: $s, name: $s, description: "pl8-services smoke test"}')" >/dev/null
+space_created=true
 echo "Space: $space"
 
 # 1. Blocker satisfied by DONE
-a="$(create_issue A)"; b="$(create_issue B)"
+a="$(create_issue A)"; issues+=("$a")
+b="$(create_issue B)"; issues+=("$b")
 block "$a" "$b"
 if ! status_is "$b" BLOCKED; then
   echo "FAIL: B not BLOCKED after add_issue_blocker" >&2
@@ -84,7 +107,8 @@ invoke transition_issue "$(jq -nc --arg s "$space" --arg i "$a" \
 wait_for "B TODO after A DONE" status_is "$b" TODO
 
 # 2. Blocker swept by delete
-c="$(create_issue C)"; d="$(create_issue D)"
+c="$(create_issue C)"; issues+=("$c")
+d="$(create_issue D)"; issues+=("$d")
 block "$c" "$d"
 invoke delete_issue "$(jq -nc --arg s "$space" --arg i "$c" \
   '{space_id: $s, issue_id: $i}')" >/dev/null
@@ -104,10 +128,4 @@ for queue in "${env}-pl8-stream-handler-dlq" "${env}-pl8-event-handler-dlq"; do
   echo "ok: $queue empty"
 done
 
-# Cleanup
-for issue in "$a" "$b" "$d"; do
-  invoke delete_issue "$(jq -nc --arg s "$space" --arg i "$issue" \
-    '{space_id: $s, issue_id: $i}')" >/dev/null
-done
-invoke delete_space "$(jq -nc --arg s "$space" '{space_id: $s}')" >/dev/null
 echo "PASS"

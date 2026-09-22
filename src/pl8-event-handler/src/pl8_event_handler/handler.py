@@ -19,4 +19,4 @@ manager = EventManager(
 
 @logger.inject_lambda_context
 def lambda_handler(event, context):
-    return manager.handle_event(event)
+    return manager.handle_event(event, context)

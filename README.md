@@ -128,5 +128,5 @@ scripts/smoke-test.sh <environment>
 ```
 
 It creates a throwaway Space, checks that finishing or deleting a blocking
-Issue moves the blocked Issue back to TODO, checks both DLQs are empty, then
-cleans up.
+Issue moves the blocked Issue back to TODO, checks both DLQs are empty, and
+deletes what it created on exit, pass or fail.

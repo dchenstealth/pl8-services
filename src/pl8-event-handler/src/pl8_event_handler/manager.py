@@ -1,6 +1,8 @@
-import json
-
-from pl8_base.errors import DDBError, EventCorruptedError
+from aws_lambda_powertools.utilities.batch import (
+    BatchProcessor,
+    EventType,
+    process_partial_response,
+)
 from pl8_base.types import IssueDeleted, IssueDone, IssueNumActiveBlockersZeroed
 from pl8_base.util import parse_event
 
@@ -12,6 +14,14 @@ HANDLERS = {
     IssueNumActiveBlockersZeroed: "handle_issue_num_active_blockers_zeroed",
 }
 
+# Per-record log keys. Reset for every record, so one record's keys never
+# appear on the next record's log lines.
+RECORD_LOG_KEYS = ("message_id", "event_type", "event_id", "space_id", "issue_id")
+
+
+class UnhandledEventError(Exception):
+    """Raised for a well-formed PL8 event this function has no handler for."""
+
 
 class EventManager:
     """Applies the core lifecycle events delivered by SQS onto a BasePL8."""
@@ -19,59 +29,54 @@ class EventManager:
     def __init__(self, pl8, logger):
         self._pl8 = pl8
         self._logger = logger
+        # Logs each failed record, with its traceback, at warning level.
+        self._processor = BatchProcessor(event_type=EventType.SQS, logger=logger)
 
-    def handle_event(self, event):
+    def handle_event(self, event, context=None):
         """Apply each SQS record's event, reporting failures per record.
 
-        The handle_* methods are idempotent and tolerate late or duplicate
-        delivery, so a failed record is simply redelivered, and after the
-        queue's maxReceiveCount it lands in the DLQ.
-
-        Any exception other than the ones handled below is a bug and fails
-        the whole invocation, so the batch is redelivered.
+        Any exception fails only its own record. The handle_* methods are
+        idempotent and tolerate late or duplicate delivery, so a failed
+        record is simply redelivered, and after the queue's maxReceiveCount
+        it lands in the DLQ. If every record fails, the processor raises
+        BatchProcessingError and the whole batch is redelivered.
 
         Returns:
             dict: {"batchItemFailures": [...]} partial batch response
         """
-        failures = []
-
-        for record in event["Records"]:
-            message_id = record["messageId"]
-            if not self.handle_record(record, message_id):
-                failures.append({"itemIdentifier": message_id})
-
-        return {"batchItemFailures": failures}
-
-    def handle_record(self, record, message_id):
-        """Apply one record's event. Returns False if it should be retried."""
         try:
-            # SQS carries the whole EventBridge envelope; the PL8 event is its
-            # detail.
-            pl8_event = parse_event(json.loads(record["body"])["detail"])
-        except (ValueError, KeyError, TypeError, EventCorruptedError) as exc:
-            self._logger.error("Malformed event", message_id=message_id,
-                               error=str(exc))
-            return False
+            return process_partial_response(event=event, context=context,
+                                            processor=self._processor,
+                                            record_handler=self.handle_record)
+        finally:
+            self._logger.remove_keys(RECORD_LOG_KEYS)
 
+    def handle_record(self, record):
+        """Apply one SQSRecord's event, raising if it should be retried.
+
+        Raises:
+            ValueError, KeyError, TypeError: if the body isn't an
+                EventBridge envelope
+            EventCorruptedError: if its detail isn't a valid PL8 event
+            UnhandledEventError: if the event isn't a core lifecycle event
+            DDBError: if the handle_* call fails
+        """
+        self._logger.append_keys(**(dict.fromkeys(RECORD_LOG_KEYS)
+                                    | {"message_id": record.message_id}))
+
+        # SQS carries the whole EventBridge envelope; the PL8 event is its
+        # detail.
+        pl8_event = parse_event(record.json_body["detail"])
         event_type = type(pl8_event).__name__
+        self._logger.append_keys(event_type=event_type,
+                                 event_id=pl8_event.event_id,
+                                 space_id=pl8_event.space_id,
+                                 issue_id=pl8_event.issue_id)
+
         method = HANDLERS.get(type(pl8_event))
         if method is None:
-            self._logger.error("Unhandled event type", message_id=message_id,
-                               event_type=event_type)
-            return False
+            raise UnhandledEventError(f"No handler for {event_type}")
 
-        log_fields = {"message_id": message_id, "event_type": event_type,
-                      "event_id": pl8_event.event_id,
-                      "space_id": pl8_event.space_id,
-                      "issue_id": pl8_event.issue_id}
-
-        try:
-            getattr(self._pl8, method)(space_id=pl8_event.space_id,
-                                       issue_id=pl8_event.issue_id)
-        except DDBError as exc:
-            self._logger.exception("Failed to handle event",
-                                   error_type=type(exc).__name__, **log_fields)
-            return False
-
-        self._logger.info("Handled event", **log_fields)
-        return True
+        getattr(self._pl8, method)(space_id=pl8_event.space_id,
+                                   issue_id=pl8_event.issue_id)
+        self._logger.info("Handled event")

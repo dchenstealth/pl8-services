@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from aws_lambda_powertools.utilities.batch.exceptions import BatchProcessingError
 from conftest import sqs_record
 from pl8_base.errors import DDBInternalError
 from pl8_base.types import (
@@ -9,6 +10,8 @@ from pl8_base.types import (
     IssueNumActiveBlockersZeroed,
     IssueReady,
 )
+
+from pl8_event_handler.manager import RECORD_LOG_KEYS
 
 SPACE = "ENG"
 
@@ -100,14 +103,21 @@ def test_malformed_record_fails_only_itself(mgr, event_manager, blocked_pair, bo
     assert blocker.is_blocking_issue_done
 
 
+def noop():
+    """An event that succeeds as a no-op: nothing is blocked on the Issue."""
+    return IssueDone(space_id=SPACE, issue_id="noop01").dict()
+
+
 def test_consumer_facing_event_is_rejected(event_manager):
     ready = IssueReady(space_id=SPACE, issue_id="abc123").dict()
-    assert handle(event_manager, ready) == {"batchItemFailures": [{"itemIdentifier": "msg-0"}]}
+    assert handle(event_manager, ready, noop()) == {
+        "batchItemFailures": [{"itemIdentifier": "msg-0"}]}
 
 
 def test_invalid_space_id_fails_record(event_manager):
     bad = IssueDone(space_id="bad#space", issue_id="abc123").dict()
-    assert handle(event_manager, bad) == {"batchItemFailures": [{"itemIdentifier": "msg-0"}]}
+    assert handle(event_manager, bad, noop()) == {
+        "batchItemFailures": [{"itemIdentifier": "msg-0"}]}
 
 
 def test_ddb_error_fails_only_its_record(mgr, event_manager, blocked_pair, monkeypatch):
@@ -125,11 +135,33 @@ def test_ddb_error_fails_only_its_record(mgr, event_manager, blocked_pair, monke
     assert mgr.get_issue(space_id=SPACE, issue_id=b.issue_id).num_active_blockers == 0
 
 
-def test_unexpected_error_propagates(mgr, event_manager, monkeypatch):
+def test_unexpected_error_fails_only_its_record(mgr, event_manager, blocked_pair,
+                                                monkeypatch):
+    a, b = blocked_pair
+
+    def boom(**kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(mgr, "handle_issue_deleted", boom)
+    mgr.transition_issue(space_id=SPACE, issue_id=a.issue_id, status="DONE")
+
+    response = handle(event_manager, detail(IssueDeleted, b), detail(IssueDone, a))
+
+    assert response == {"batchItemFailures": [{"itemIdentifier": "msg-0"}]}
+    assert mgr.get_issue(space_id=SPACE, issue_id=b.issue_id).num_active_blockers == 0
+
+
+def test_entire_batch_failing_raises(mgr, event_manager, monkeypatch):
     def boom(**kwargs):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(mgr, "handle_issue_done", boom)
+    done = IssueDone(space_id=SPACE, issue_id="abc123").dict()
 
-    with pytest.raises(RuntimeError, match="boom"):
-        handle(event_manager, IssueDone(space_id=SPACE, issue_id="abc123").dict())
+    with pytest.raises(BatchProcessingError):
+        handle(event_manager, done, done)
+
+
+def test_record_log_keys_do_not_outlive_the_batch(event_manager, logger):
+    handle(event_manager, noop())
+    assert not set(RECORD_LOG_KEYS) & set(logger.get_current_keys())

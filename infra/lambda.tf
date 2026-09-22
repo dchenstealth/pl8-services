@@ -157,12 +157,16 @@ resource "aws_lambda_event_source_mapping" "pl8_stream_handler" {
   }
 
   # Only IssueInfo rows produce events (see src/pl8-stream-handler), so
-  # blocker and space writes never invoke the function.
+  # blocker and space writes never invoke the function. SpaceInfo shares
+  # the 100#INFO SK, hence the PK prefix too. Both come from
+  # IssueInfo.KEY_ATTRS in pl8-base (pl8_base/types/issue.py); keep them in
+  # step if the key format changes.
   filter_criteria {
     filter {
       pattern = jsonencode({
         dynamodb = {
           Keys = {
+            PK = { S = [{ prefix = "ISSUE#" }] }
             SK = { S = ["100#INFO"] }
           }
         }

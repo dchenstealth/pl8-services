@@ -17,9 +17,11 @@ def _issue_info(image):
     no use for the rest (description is gzipped), and a malformed field it
     doesn't need must not stall the shard.
 
-    Returns None unless the image is an IssueInfo row. The type is checked as
-    well as the SK so that anything else written at that key, which pl8-base
-    never does, is skipped rather than misread.
+    Returns None unless the image is an IssueInfo row. The SK alone does not
+    tell: SpaceInfo rows share SK 100#INFO. The event source mapping filters
+    them out by PK, but this type check is what keeps them from being read as
+    Issues (they have no issue_id) if the filter ever lets one through, so it
+    must stay.
     """
     if not image or image.get("SK", {}).get("S") != ISSUE_INFO_SK:
         return None

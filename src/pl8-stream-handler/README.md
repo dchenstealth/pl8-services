@@ -7,9 +7,11 @@ onto the PL8 EventBridge bus.
 ## Events
 
 Only `IssueInfo` rows produce events. The event source mapping filters on
-`SK = 100#INFO`, so blocker and space writes never invoke the function, and
-[`mapping.py`](src/pl8_stream_handler/mapping.py) also checks each image's
-`type`, so nothing else at that key is misread as an Issue.
+`PK` starting with `ISSUE#` and `SK = 100#INFO`, so blocker and space writes
+never invoke the function. (`SpaceInfo` rows share `SK = 100#INFO`; the `PK`
+prefix is what excludes them.) [`mapping.py`](src/pl8_stream_handler/mapping.py)
+also checks each image's `type`, so a `SpaceInfo` row that got past the
+filter would still be skipped rather than read as an Issue.
 
 | Record | Condition | Event |
 | --- | --- | --- |
