@@ -20,7 +20,7 @@ variable "pl8_table_on_demand_write_request_units" {
 
 variable "event_queue_visibility_timeout_seconds" {
   type        = number
-  description = "Visibility timeout for the pl8 event-handler SQS queue"
+  description = "Visibility timeout for the pl8 event-handler SQS queue. AWS recommends 6x pl8_event_handler_timeout_seconds or more"
 }
 
 variable "event_queue_max_receive_count" {
@@ -46,4 +46,55 @@ variable "pl8_interface_timeout_seconds" {
 variable "pl8_interface_log_retention_days" {
   type        = number
   description = "CloudWatch Logs retention period for the pl8-interface Lambda"
+}
+
+variable "pl8_stream_handler_memory_mb" {
+  type        = number
+  description = "Memory (MB) allocated to the pl8-stream-handler Lambda"
+}
+
+variable "pl8_stream_handler_timeout_seconds" {
+  type        = number
+  description = "Invocation timeout (seconds) for the pl8-stream-handler Lambda"
+}
+
+variable "pl8_stream_handler_log_retention_days" {
+  type        = number
+  description = "CloudWatch Logs retention period for the pl8-stream-handler Lambda"
+}
+
+variable "pl8_stream_handler_batch_size" {
+  type        = number
+  description = "Max stream records per pl8-stream-handler invocation"
+}
+
+variable "pl8_stream_handler_maximum_retry_attempts" {
+  type        = number
+  description = "Retries for a failing stream batch before its metadata goes to the stream-handler DLQ"
+}
+
+variable "pl8_event_handler_memory_mb" {
+  type        = number
+  description = "Memory (MB) allocated to the pl8-event-handler Lambda"
+}
+
+variable "pl8_event_handler_timeout_seconds" {
+  type        = number
+  description = "Invocation timeout (seconds) for the pl8-event-handler Lambda. Keep event_queue_visibility_timeout_seconds at 6x or more"
+}
+
+variable "pl8_event_handler_log_retention_days" {
+  type        = number
+  description = "CloudWatch Logs retention period for the pl8-event-handler Lambda"
+}
+
+variable "pl8_event_handler_batch_size" {
+  type        = number
+  description = "Max SQS messages per pl8-event-handler invocation"
+}
+
+variable "alarm_actions" {
+  type        = list(string)
+  description = "ARNs (e.g. SNS topics) notified when a DLQ alarm changes state"
+  default     = []
 }

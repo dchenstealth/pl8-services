@@ -5,9 +5,8 @@ Infrastructure (and, eventually, Lambda code) for running
 
 ## Status
 
-This repo covers PL8's stateful and eventing backbone plus the
-`pl8-interface` Lambda. The `pl8-stream-handler` and `pl8-event-handler`
-Lambdas are follow-up slices, not yet implemented here.
+This repo covers PL8's stateful and eventing backbone and all three of its
+Lambdas: `pl8-interface`, `pl8-stream-handler` and `pl8-event-handler`.
 
 ## Resources
 
@@ -19,9 +18,13 @@ Managed with [OpenTofu](https://opentofu.org/):
 - A custom EventBridge event bus
 - An EventBridge rule routing PL8's internal lifecycle events to an SQS
   queue
-- An SQS queue (with a dead-letter queue) that a future event-handler
-  Lambda will consume from
-- The `pl8-interface` Lambda (see below)
+- An SQS queue (with a dead-letter queue) that `pl8-event-handler`
+  consumes from
+- The `pl8-interface`, `pl8-stream-handler` and `pl8-event-handler`
+  Lambdas (see below), plus their event source mappings
+- A dead-letter queue for records `pl8-stream-handler` fails to publish
+- CloudWatch alarms on both dead-letter queues (notify via
+  `alarm_actions`)
 - A Lambda layer holding the third-party dependencies shared by every
   function
 
@@ -49,6 +52,36 @@ Runs on the arm64 `python3.14` runtime with the shared layer. The function
 is tagged
 `Type=PL8Interface`; invoke permission is granted against that tag outside
 this repo.
+
+### Event flow
+
+```
+DynamoDB stream ─▶ pl8-stream-handler ─▶ EventBridge bus ─┬─▶ core lifecycle rule ─▶ SQS ─▶ pl8-event-handler
+                                                          └─▶ IssueReady, for external consumers' own rules
+```
+
+Each hop delivers at-least-once, so every event can arrive more than once.
+pl8-base's `handle_*` methods are idempotent for this reason, and
+`IssueReady` consumers must tolerate duplicates too. The event handler's
+writes land back on the stream, so one change can cascade: an Issue
+reaching DONE satisfies its IssueBlockers, which zeroes a blocked Issue's
+counter, which moves that Issue to TODO and emits `IssueReady`.
+
+Each function's zip, role, log group and function come from
+`infra/modules/lambda_function`.
+
+### pl8-stream-handler
+
+Reads the table's stream and publishes the events in
+[pl8-docs `events.md`](https://github.com/dchenstealth/pl8-docs/blob/main/architecture/backend/events.md)
+onto the bus. See
+[`src/pl8-stream-handler/README.md`](src/pl8-stream-handler/README.md).
+
+### pl8-event-handler
+
+Consumes the core lifecycle events from SQS and applies them with pl8-base's
+`handle_*` methods. See
+[`src/pl8-event-handler/README.md`](src/pl8-event-handler/README.md).
 
 ## Deployment
 
@@ -84,3 +117,16 @@ tofu apply plan.tfplan
 
 Currently deployed manually, after authenticating to the target AWS
 account.
+
+### Smoke test
+
+After an apply, check the whole async loop end to end (requires `aws`,
+`jq`, and invoke permission on the interface):
+
+```bash
+scripts/smoke-test.sh <environment>
+```
+
+It creates a throwaway Space, checks that finishing or deleting a blocking
+Issue moves the blocked Issue back to TODO, checks both DLQs are empty, then
+cleans up.

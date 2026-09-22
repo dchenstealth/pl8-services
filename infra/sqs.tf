@@ -48,3 +48,11 @@ resource "aws_sqs_queue_policy" "event_handler" {
     ]
   })
 }
+
+# On-failure destination for pl8-stream-handler: records it could not turn
+# into events after its retries. Holds the stream batch's metadata (shard and
+# sequence numbers), not the records themselves.
+resource "aws_sqs_queue" "stream_handler_dlq" {
+  name                      = "${var.environment}-pl8-stream-handler-dlq"
+  message_retention_seconds = var.event_queue_message_retention_seconds
+}

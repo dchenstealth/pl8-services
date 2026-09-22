@@ -1,0 +1,22 @@
+[project]
+name = "pl8-stream-handler"
+version = "0.1.0"
+description = "PL8's DynamoDB stream handler Lambda: publishes lifecycle events"
+requires-python = ">=3.14"
+dependencies = [
+    "pl8-base~=0.0.3",
+    "boto3~=1.43.40",
+    "aws-lambda-powertools~=3.35.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff~=0.16.8",
+    "pytest~=9.1.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
