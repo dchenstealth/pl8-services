@@ -1,4 +1,13 @@
+import pytest
 from pl8_base.errors import DDBInternalError
+
+
+@pytest.fixture
+def space(invoke):
+    """The ENG Space, which create_issue requires to exist."""
+    response = invoke("create_space", space_id="ENG", name="Eng", description="d")
+    assert response["ok"] is True
+    return response["data"]
 
 
 def create_issue(invoke, status="TODO", space_id="ENG"):
@@ -19,8 +28,7 @@ def test_space_round_trip(invoke):
     assert fetched["data"]["description"] == "d"
 
 
-def test_results_omit_storage_keys(invoke):
-    invoke("create_space", space_id="ENG", name="Eng", description="d")
+def test_results_omit_storage_keys(invoke, space):
     issue = create_issue(invoke)
 
     listed = invoke("get_spaces")["data"]["items"]
@@ -28,7 +36,7 @@ def test_results_omit_storage_keys(invoke):
         assert not {"PK", "SK", "GSI1PK", "GSI1SK"} & data.keys()
 
 
-def test_delete_returns_null_data(invoke):
+def test_delete_returns_null_data(invoke, space):
     issue = create_issue(invoke)
 
     response = invoke("delete_issue", space_id="ENG", issue_id=issue["issue_id"])
@@ -52,7 +60,29 @@ def test_missing_space_maps_ddb_error(invoke):
     assert response["error"]["type"] == "DDBMissingError"
 
 
-def test_transition_issue(invoke):
+def test_issue_in_missing_space_maps_ddb_error(invoke):
+    response = invoke("create_issue", space_id="ENG", title="t",
+                      description="d", status="TODO")
+    assert response["ok"] is False
+    assert response["error"]["type"] == "DDBMissingError"
+
+
+def test_delete_non_empty_space_maps_ddb_error(invoke, space):
+    create_issue(invoke)
+
+    response = invoke("delete_space", space_id="ENG")
+    assert response["ok"] is False
+    assert response["error"]["type"] == "DDBSpaceNotEmptyError"
+
+
+def test_space_results_include_issue_count(invoke, space):
+    assert space["issue_count"] == 0
+    create_issue(invoke)
+
+    assert invoke("get_space", space_id="ENG")["data"]["issue_count"] == 1
+
+
+def test_transition_issue(invoke, space):
     issue = create_issue(invoke)
 
     response = invoke("transition_issue", space_id="ENG",
@@ -61,7 +91,7 @@ def test_transition_issue(invoke):
     assert response["data"]["status"] == "IN_PROGRESS"
 
 
-def test_transition_out_of_done_maps_ddb_error(invoke):
+def test_transition_out_of_done_maps_ddb_error(invoke, space):
     issue = create_issue(invoke, status="DONE")
 
     response = invoke("transition_issue", space_id="ENG",
@@ -70,7 +100,7 @@ def test_transition_out_of_done_maps_ddb_error(invoke):
     assert response["error"]["type"] == "DDBTerminalStatusError"
 
 
-def test_get_issues_by_status_cursor_round_trip(invoke):
+def test_get_issues_by_status_cursor_round_trip(invoke, space):
     ids = {create_issue(invoke)["issue_id"] for _ in range(3)}
 
     first = invoke("get_issues_by_status", space_id="ENG", status="TODO", limit=2)
@@ -84,7 +114,7 @@ def test_get_issues_by_status_cursor_round_trip(invoke):
     assert {i["issue_id"] for i in page + rest} == ids
 
 
-def test_add_and_get_issue_blockers(invoke):
+def test_add_and_get_issue_blockers(invoke, space):
     blocking = create_issue(invoke)
     blocked = create_issue(invoke)
 

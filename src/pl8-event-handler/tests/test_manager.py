@@ -18,6 +18,7 @@ SPACE = "ENG"
 @pytest.fixture
 def blocked_pair(mgr):
     """A blocks B, so B is BLOCKED with one active blocker."""
+    mgr.create_space(space_id=SPACE, name=SPACE, description="d")
     a = mgr.create_issue(space_id=SPACE, title="A", description="d", status="TODO")
     b = mgr.create_issue(space_id=SPACE, title="B", description="d", status="TODO")
     mgr.add_issue_blocker(blocking_issue_space_id=SPACE, blocking_issue_id=a.issue_id,

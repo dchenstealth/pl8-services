@@ -390,15 +390,15 @@ wheels = [
 
 [[package]]
 name = "pl8-base"
-version = "0.0.3"
+version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "boto3" },
     { name = "msgspec" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9b/fb/41a4697dace9c76eaf5a31881b091dde4eb298806056fa6fb1ae194595d1/pl8_base-0.0.3.tar.gz", hash = "sha256:d305668689095a40d8da740402c7242619ad914dc282c40772b41283cd848065", size = 23051, upload-time = "2026-09-22T03:11:46.015Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/76/0fc6dcc14e559948e7761b0a10f7e60f4f95e5711f7719ff297aa616da4a/pl8_base-0.0.4.tar.gz", hash = "sha256:6af5817f6fac78e4e9d038c2a67c1e32f38d19e5126a03c4a7d77200e0b705fa", size = 25301, upload-time = "2026-09-22T13:15:04.189Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cd/df/b48471df42bdbc7eedf1813aa72147d38586d4d8c37524402881bf75bf5a/pl8_base-0.0.3-py3-none-any.whl", hash = "sha256:7912d551f01c601b6538440c3390309861f11c2195a5c6f342bfb0ca28786b3f", size = 30591, upload-time = "2026-09-22T03:11:44.797Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/e6/57171dc6c383102578d7d276a8565f700be7b9cd8f8eae802dd31e2d905c/pl8_base-0.0.4-py3-none-any.whl", hash = "sha256:acafe84f108369b0aba0d0e6a22cc5765a671dd9c824f6caf1278b8d0dfdd477", size = 32956, upload-time = "2026-09-22T13:15:03.008Z" },
 ]
 
 [[package]]
@@ -422,7 +422,7 @@ dev = [
 requires-dist = [
     { name = "aws-lambda-powertools", specifier = "~=3.35.0" },
     { name = "boto3", specifier = "~=1.43.40" },
-    { name = "pl8-base", specifier = "~=0.0.3" },
+    { name = "pl8-base", specifier = "~=0.0.4" },
 ]
 
 [package.metadata.requires-dev]
@@ -456,7 +456,7 @@ requires-dist = [
     { name = "aws-lambda-powertools", specifier = "~=3.35.0" },
     { name = "boto3", specifier = "~=1.43.40" },
     { name = "fastjsonschema", specifier = "~=2.22.2" },
-    { name = "pl8-base", specifier = "~=0.0.3" },
+    { name = "pl8-base", specifier = "~=0.0.4" },
     { name = "pyyaml", specifier = "~=6.0.3" },
 ]
 
@@ -487,7 +487,7 @@ dev = [
 requires-dist = [
     { name = "aws-lambda-powertools", specifier = "~=3.35.0" },
     { name = "boto3", specifier = "~=1.43.40" },
-    { name = "pl8-base", specifier = "~=0.0.3" },
+    { name = "pl8-base", specifier = "~=0.0.4" },
 ]
 
 [package.metadata.requires-dev]
