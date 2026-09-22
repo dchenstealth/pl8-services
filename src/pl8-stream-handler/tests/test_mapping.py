@@ -48,9 +48,7 @@ def test_event_ids_come_from_the_image():
     assert (event.space_id, event.issue_id) == (SPACE_ID, ISSUE_ID)
 
 
-def test_partial_issue_info_row_is_ignored():
-    # A counter update on an Issue that no longer exists leaves a row at the
-    # IssueInfo key without the rest of its attributes.
+def test_non_issue_info_row_at_issue_info_key_is_ignored():
     image = issue_image()
     partial = {"PK": image["PK"], "SK": image["SK"],
                "num_active_blockers": {"N": "-1"}}
