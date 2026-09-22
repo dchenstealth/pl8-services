@@ -1,11 +1,12 @@
 from importlib.resources import files
 
 import fastjsonschema
-import msgspec
 import yaml
-from pl8_base.errors import DDBError
+from pl8_base.errors import DDBError, DDBInternalError
 
 DEFAULT_OPERATIONS = files(__package__) / "operations.yaml"
+
+INTERNAL_ERROR_MESSAGE = "Internal error"
 
 ENVELOPE_SCHEMA = {
     "type": "object",
@@ -30,14 +31,17 @@ class InterfaceManager:
         self._logger = logger
         self._validate_envelope = fastjsonschema.compile(ENVELOPE_SCHEMA)
         self._validators = {}
+        self._paginated = set()
 
-        for entry in yaml.safe_load(operations.read_text()):
+        for entry in yaml.safe_load(operations.read_text())["operations"]:
             method = entry["method"]
             # Only allow-listed public methods are reachable; handle_* belong
             # to pl8-event-handler.
             if method.startswith(("_", "handle_")) or not callable(getattr(pl8, method, None)):
                 raise ValueError(f"Operation {method!r} is not an invokable BasePL8 method")
             self._validators[method] = fastjsonschema.compile(entry["schema"])
+            if entry.get("paginated", False):
+                self._paginated.add(method)
 
     @property
     def operations(self):
@@ -61,14 +65,23 @@ class InterfaceManager:
 
         try:
             result = getattr(self._pl8, operation)(**params)
+        except DDBInternalError as exc:
+            # Server-side fault: log the detail, but don't hand raw AWS error
+            # text (account, role and table ARNs) back to the caller.
+            self._logger.exception("Operation failed with internal error",
+                                   operation=operation,
+                                   error_type=type(exc).__name__)
+            return error(type(exc).__name__, INTERNAL_ERROR_MESSAGE)
         except DDBError as exc:
             self._logger.info("Operation failed", operation=operation,
                               error_type=type(exc).__name__)
             return error(type(exc).__name__, str(exc))
 
-        # Paginated BasePL8 queries return (items, cursor).
-        if isinstance(result, tuple):
+        if operation in self._paginated:
             items, cursor = result
-            result = {"items": items, "cursor": cursor}
+            data = {"items": [item.public_dict() for item in items],
+                    "cursor": cursor}
+        else:
+            data = None if result is None else result.public_dict()
 
-        return {"ok": True, "data": msgspec.to_builtins(result)}
+        return {"ok": True, "data": data}

@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "PL8's direct-invoke interface Lambda"
 requires-python = ">=3.14"
 dependencies = [
-    "pl8-base~=0.0.1",
+    "pl8-base~=0.0.3",
+    "boto3~=1.43.40",
     "aws-lambda-powertools~=3.35.0",
     "fastjsonschema~=2.22.2",
     "pyyaml~=6.0.3",

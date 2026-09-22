@@ -383,15 +383,15 @@ wheels = [
 
 [[package]]
 name = "pl8-base"
-version = "0.0.1"
+version = "0.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "boto3" },
     { name = "msgspec" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ba/ba/10f69ac386b413941b4ee70f687ecc8e233b4fcc079f2e19b81a51f6efb7/pl8_base-0.0.1.tar.gz", hash = "sha256:34b7aa70fc29ca816ed25800f696bf210f62949655c8eb88b1c6c575d1fb5379", size = 22917, upload-time = "2026-09-20T21:53:45.876Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/fb/41a4697dace9c76eaf5a31881b091dde4eb298806056fa6fb1ae194595d1/pl8_base-0.0.3.tar.gz", hash = "sha256:d305668689095a40d8da740402c7242619ad914dc282c40772b41283cd848065", size = 23051, upload-time = "2026-09-22T03:11:46.015Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b9/5b/1f372e1cbe5dad1a21f108f28f7202c982f97d324e3e23d890ddfa1f9c6a/pl8_base-0.0.1-py3-none-any.whl", hash = "sha256:eb2e330e5246fc2955a0032d2b5a3fb43b8cbf9a6376de00a061c1bf54ab0170", size = 30007, upload-time = "2026-09-20T21:53:44.546Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/df/b48471df42bdbc7eedf1813aa72147d38586d4d8c37524402881bf75bf5a/pl8_base-0.0.3-py3-none-any.whl", hash = "sha256:7912d551f01c601b6538440c3390309861f11c2195a5c6f342bfb0ca28786b3f", size = 30591, upload-time = "2026-09-22T03:11:44.797Z" },
 ]
 
 [[package]]
@@ -400,6 +400,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aws-lambda-powertools" },
+    { name = "boto3" },
     { name = "fastjsonschema" },
     { name = "pl8-base" },
     { name = "pyyaml" },
@@ -415,8 +416,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aws-lambda-powertools", specifier = "~=3.35.0" },
+    { name = "boto3", specifier = "~=1.43.40" },
     { name = "fastjsonschema", specifier = "~=2.22.2" },
-    { name = "pl8-base", specifier = "~=0.0.1" },
+    { name = "pl8-base", specifier = "~=0.0.3" },
     { name = "pyyaml", specifier = "~=6.0.3" },
 ]
 

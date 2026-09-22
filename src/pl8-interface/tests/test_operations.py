@@ -1,3 +1,6 @@
+from pl8_base.errors import DDBInternalError
+
+
 def create_issue(invoke, status="TODO", space_id="ENG"):
     response = invoke("create_issue", space_id=space_id, title="t",
                       description="d", status=status)
@@ -14,6 +17,33 @@ def test_space_round_trip(invoke):
     assert fetched["data"]["space_id"] == "ENG"
     assert fetched["data"]["name"] == "Eng"
     assert fetched["data"]["description"] == "d"
+
+
+def test_results_omit_storage_keys(invoke):
+    invoke("create_space", space_id="ENG", name="Eng", description="d")
+    issue = create_issue(invoke)
+
+    listed = invoke("get_spaces")["data"]["items"]
+    for data in (issue, *listed):
+        assert not {"PK", "SK", "GSI1PK", "GSI1SK"} & data.keys()
+
+
+def test_delete_returns_null_data(invoke):
+    issue = create_issue(invoke)
+
+    response = invoke("delete_issue", space_id="ENG", issue_id=issue["issue_id"])
+    assert response == {"ok": True, "data": None}
+
+
+def test_internal_error_hides_detail(invoke, mgr, monkeypatch):
+    def boom(**kwargs):
+        raise DDBInternalError("arn:aws:iam::123456789012:role/secret")
+
+    monkeypatch.setattr(mgr, "get_space", boom)
+
+    response = invoke("get_space", space_id="ENG")
+    assert response == {"ok": False, "error": {"type": "DDBInternalError",
+                                               "message": "Internal error"}}
 
 
 def test_missing_space_maps_ddb_error(invoke):
