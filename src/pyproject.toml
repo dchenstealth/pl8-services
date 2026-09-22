@@ -1,0 +1,5 @@
+# Workspace root for pl8-services' Lambdas. One lockfile pins every
+# function's dependencies, so the shared layer (build-layer.sh) ships exactly
+# the versions each function is tested against.
+[tool.uv.workspace]
+members = ["pl8-*"]

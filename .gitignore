@@ -1,3 +1,6 @@
 *.tfstate
 *.tfstate.*
 .terraform/
+src/build/
+.venv/
+__pycache__/

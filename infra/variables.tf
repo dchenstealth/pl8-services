@@ -32,3 +32,18 @@ variable "event_queue_message_retention_seconds" {
   type        = number
   description = "Message retention period for the event-handler queue and its DLQ"
 }
+
+variable "pl8_interface_memory_mb" {
+  type        = number
+  description = "Memory (MB) allocated to the pl8-interface Lambda"
+}
+
+variable "pl8_interface_timeout_seconds" {
+  type        = number
+  description = "Invocation timeout (seconds) for the pl8-interface Lambda"
+}
+
+variable "pl8_interface_log_retention_days" {
+  type        = number
+  description = "CloudWatch Logs retention period for the pl8-interface Lambda"
+}

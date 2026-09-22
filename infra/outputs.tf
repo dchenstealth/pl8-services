@@ -17,3 +17,13 @@ output "pl8_event_handler_queue_arn" {
   value       = aws_sqs_queue.event_handler.arn
   description = "ARN of the SQS queue feeding a future pl8-event-handler Lambda's event source mapping"
 }
+
+output "pl8_interface_function_name" {
+  value       = aws_lambda_function.pl8_interface.function_name
+  description = "Name of the pl8-interface Lambda, for pl8-cli invoke configuration"
+}
+
+output "pl8_interface_function_arn" {
+  value       = aws_lambda_function.pl8_interface.arn
+  description = "ARN of the pl8-interface Lambda"
+}
