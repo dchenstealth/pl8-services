@@ -4,7 +4,9 @@ requires-python = ">=3.14"
 
 [manifest]
 members = [
+    "pl8-event-handler",
     "pl8-interface",
+    "pl8-stream-handler",
 ]
 
 [[package]]
@@ -400,6 +402,37 @@ wheels = [
 ]
 
 [[package]]
+name = "pl8-event-handler"
+version = "0.1.0"
+source = { virtual = "pl8-event-handler" }
+dependencies = [
+    { name = "aws-lambda-powertools" },
+    { name = "boto3" },
+    { name = "pl8-base" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "moto" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aws-lambda-powertools", specifier = "~=3.35.0" },
+    { name = "boto3", specifier = "~=1.43.40" },
+    { name = "pl8-base", specifier = "~=0.0.3" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "moto", specifier = "~=5.2.2" },
+    { name = "pytest", specifier = "~=9.1.1" },
+    { name = "ruff", specifier = "~=0.16.8" },
+]
+
+[[package]]
 name = "pl8-interface"
 version = "0.1.0"
 source = { virtual = "pl8-interface" }
@@ -430,6 +463,35 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "moto", specifier = "~=5.2.2" },
+    { name = "pytest", specifier = "~=9.1.1" },
+    { name = "ruff", specifier = "~=0.16.8" },
+]
+
+[[package]]
+name = "pl8-stream-handler"
+version = "0.1.0"
+source = { virtual = "pl8-stream-handler" }
+dependencies = [
+    { name = "aws-lambda-powertools" },
+    { name = "boto3" },
+    { name = "pl8-base" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aws-lambda-powertools", specifier = "~=3.35.0" },
+    { name = "boto3", specifier = "~=1.43.40" },
+    { name = "pl8-base", specifier = "~=0.0.3" },
+]
+
+[package.metadata.requires-dev]
+dev = [
     { name = "pytest", specifier = "~=9.1.1" },
     { name = "ruff", specifier = "~=0.16.8" },
 ]
