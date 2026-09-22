@@ -1,0 +1,49 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Matches the Lambda runtime (python3.14); the workspace requires it.
+      - name: Set up Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --all-packages
+
+      # Each workspace member is a Lambda with its own pytest config, so run
+      # them one at a time; new members are picked up without editing this.
+      - name: Run ruff check
+        run: |
+          for member in pl8-*/; do
+            echo "::group::ruff ${member%/}"
+            (cd "$member" && uv run ruff check .)
+            echo "::endgroup::"
+          done
+
+      - name: Run tests
+        run: |
+          for member in pl8-*/; do
+            echo "::group::pytest ${member%/}"
+            (cd "$member" && uv run pytest)
+            echo "::endgroup::"
+          done
