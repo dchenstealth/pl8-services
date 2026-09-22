@@ -67,5 +67,8 @@ and its expected-operations set must be updated too.
 uv sync
 uv run ruff check .
 uv run pytest
-./build.sh    # -> dist/pl8-interface.zip (arm64, python3.14)
 ```
+
+Dependencies are locked in the workspace's `../uv.lock`. Runtime dependencies
+are deployed in the shared layer (`../build-layer.sh`), not in this
+function's zip.

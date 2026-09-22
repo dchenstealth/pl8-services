@@ -22,8 +22,20 @@ Managed with [OpenTofu](https://opentofu.org/):
 - An SQS queue (with a dead-letter queue) that a future event-handler
   Lambda will consume from
 - The `pl8-interface` Lambda (see below)
+- A Lambda layer holding the third-party dependencies shared by every
+  function
 
 ## Lambda functions
+
+Each function lives under `src/` as a member of one
+[uv](https://docs.astral.sh/uv/) workspace, so a single `src/uv.lock` pins
+the dependencies of all of them. Those dependencies ship once, in the
+`<environment>-pl8-deps` layer that `src/build-layer.sh` installs for arm64
+`python3.14`. Each function's own zip holds only its source package.
+OpenTofu builds both zips with `archive_file`; fixed file modes and a build
+script that strips machine-specific files keep their hashes identical
+across rebuilds and machines, so an unchanged function or layer doesn't
+redeploy.
 
 ### pl8-interface
 
@@ -33,8 +45,8 @@ request and dispatches it onto [`pl8-base`](https://github.com/dchenstealth/pl8-
 See [`src/pl8-interface/README.md`](src/pl8-interface/README.md) for the
 request/response contract.
 
-Runs on the arm64 `python3.14` runtime as a zip package built with
-[uv](https://docs.astral.sh/uv/). The function is tagged
+Runs on the arm64 `python3.14` runtime with the shared layer. The function
+is tagged
 `Type=PL8Interface`; invoke permission is granted against that tag outside
 this repo.
 
@@ -56,11 +68,11 @@ to `pl8-services` only (table capacity, queue settings, etc).
 
 ### Plan and apply
 
-Build the `pl8-interface` zip first; `infra/lambda.tf` reads
-`src/pl8-interface/dist/pl8-interface.zip` at plan time. Requires `uv`.
+Build the shared layer first; `infra/lambda.tf` zips `src/build/layer` at
+plan time. Requires `uv`.
 
 ```bash
-src/pl8-interface/build.sh
+src/build-layer.sh
 cd infra
 tofu init -backend-config <path-to-tfconfig>/<environment>.tfbackend
 tofu plan \

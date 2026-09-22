@@ -2,6 +2,11 @@ version = 1
 revision = 3
 requires-python = ">=3.14"
 
+[manifest]
+members = [
+    "pl8-interface",
+]
+
 [[package]]
 name = "aws-lambda-powertools"
 version = "3.35.0"
@@ -397,7 +402,7 @@ wheels = [
 [[package]]
 name = "pl8-interface"
 version = "0.1.0"
-source = { virtual = "." }
+source = { virtual = "pl8-interface" }
 dependencies = [
     { name = "aws-lambda-powertools" },
     { name = "boto3" },

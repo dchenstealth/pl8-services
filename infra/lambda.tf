@@ -1,7 +1,33 @@
 locals {
   pl8_interface_name = "${var.environment}-pl8-interface"
-  # Built by src/pl8-interface/build.sh; must exist before plan.
-  pl8_interface_zip = "${path.module}/../src/pl8-interface/dist/pl8-interface.zip"
+  lambda_build_dir   = "${path.module}/../src/build"
+}
+
+# Third-party dependencies shared by every pl8-services Lambda, installed by
+# src/build-layer.sh (must run before plan). Function zips hold only their own
+# code. Fixed file modes keep the hash identical across machines regardless of
+# umask; archive_file already ignores mtimes.
+data "archive_file" "pl8_deps_layer" {
+  type             = "zip"
+  source_dir       = "${local.lambda_build_dir}/layer"
+  output_path      = "${local.lambda_build_dir}/pl8-deps-layer.zip"
+  output_file_mode = "0644"
+}
+
+resource "aws_lambda_layer_version" "pl8_deps" {
+  layer_name               = "${var.environment}-pl8-deps"
+  filename                 = data.archive_file.pl8_deps_layer.output_path
+  source_code_hash         = data.archive_file.pl8_deps_layer.output_base64sha256
+  compatible_runtimes      = ["python3.14"]
+  compatible_architectures = ["arm64"]
+}
+
+data "archive_file" "pl8_interface" {
+  type             = "zip"
+  source_dir       = "${path.module}/../src/pl8-interface/src"
+  output_path      = "${local.lambda_build_dir}/pl8-interface.zip"
+  output_file_mode = "0644"
+  excludes         = ["**/__pycache__/**"]
 }
 
 data "aws_iam_policy_document" "pl8_interface_assume_role" {
@@ -64,11 +90,12 @@ resource "aws_lambda_function" "pl8_interface" {
   function_name = local.pl8_interface_name
   role          = aws_iam_role.pl8_interface.arn
 
-  filename         = local.pl8_interface_zip
-  source_code_hash = filebase64sha256(local.pl8_interface_zip)
+  filename         = data.archive_file.pl8_interface.output_path
+  source_code_hash = data.archive_file.pl8_interface.output_base64sha256
   handler          = "pl8_interface.handler.lambda_handler"
   runtime          = "python3.14"
   architectures    = ["arm64"]
+  layers           = [aws_lambda_layer_version.pl8_deps.arn]
 
   memory_size = var.pl8_interface_memory_mb
   timeout     = var.pl8_interface_timeout_seconds
