@@ -157,8 +157,12 @@ resource "aws_lambda_event_source_mapping" "pl8_stream_handler" {
   }
 
   # Only IssueInfo rows produce events (see src/pl8-stream-handler), so
-  # blocker and space writes never invoke the function. SpaceInfo shares
-  # the 100#INFO SK, hence the PK prefix too. Both come from
+  # blocker, comment and space rows never invoke the function. SpaceInfo
+  # shares the 100#INFO SK, hence the PK prefix too, and an IssueComment
+  # shares its Issue's PK, so the SK is what excludes it. The Issue counters
+  # a blocker or comment write moves in the same transaction are on the
+  # IssueInfo row, so those still invoke it: a num_active_blockers change can
+  # emit an event, a num_comments change never does. Both come from
   # IssueInfo.KEY_ATTRS in pl8-base (pl8_base/types/issue.py); keep them in
   # step if the key format changes.
   filter_criteria {
@@ -205,8 +209,10 @@ module "pl8_event_handler" {
     },
     {
       # Exactly the calls pl8-base's handle_* methods make: blocker queries
-      # (both directions, so GSI1), conditioned updates and deletes, and the
-      # ConditionCheck inside satisfy_issue_blocker's transaction.
+      # (both directions, so GSI1) and the consistent partition read that
+      # sweeps a deleted Issue's comments and blockers, conditioned updates
+      # and deletes, and the ConditionCheck inside satisfy_issue_blocker's
+      # transaction.
       sid = "PL8TableAccess"
       actions = [
         "dynamodb:Query",

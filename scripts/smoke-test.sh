@@ -3,7 +3,8 @@
 # driven through pl8-interface:
 #   1. A blocks B; A -> DONE; B must reach TODO.
 #   2. C blocks D; C deleted; the IssueBlocker must be swept and D reach TODO.
-#   3. Both DLQs must be empty.
+#   3. E gets a comment and is deleted; the IssueComment must be swept.
+#   4. Both DLQs must be empty.
 # Creates its own Space and deletes it (and its Issues) on exit, pass or fail.
 #
 # Usage: scripts/smoke-test.sh <environment>   (requires aws, jq)
@@ -12,6 +13,7 @@ set -euo pipefail
 env="${1:?usage: $0 <environment>}"
 function_name="${env}-pl8-interface"
 space="smoke-$(date +%s)"
+creator="pl8-services-smoke-test"
 timeout_seconds=120
 tmp="$(mktemp -d)"
 space_created=false
@@ -32,8 +34,9 @@ invoke() {
 }
 
 create_issue() {
-  invoke create_issue "$(jq -nc --arg s "$space" --arg t "$1" \
-    '{space_id: $s, title: $t, description: "pl8-services smoke test", status: "TODO"}')" \
+  invoke create_issue "$(jq -nc --arg s "$space" --arg t "$1" --arg c "$creator" \
+    '{space_id: $s, title: $t, description: "pl8-services smoke test",
+      status: "TODO", creator: $c}')" \
     | jq -r .issue_id
 }
 
@@ -90,8 +93,14 @@ blockers_empty() {
     '{space_id: $s, blocked_issue_id: $i}')" | jq '.items | length')" == 0 ]]
 }
 
-invoke create_space "$(jq -nc --arg s "$space" \
-  '{space_id: $s, name: $s, description: "pl8-services smoke test"}')" >/dev/null
+comments_empty() {
+  [[ "$(invoke get_issue_comments "$(jq -nc --arg s "$space" --arg i "$1" \
+    '{space_id: $s, issue_id: $i}')" | jq '.items | length')" == 0 ]]
+}
+
+invoke create_space "$(jq -nc --arg s "$space" --arg c "$creator" \
+  '{space_id: $s, name: $s, description: "pl8-services smoke test",
+    creator: $c}')" >/dev/null
 space_created=true
 echo "Space: $space"
 
@@ -117,7 +126,21 @@ invoke delete_issue "$(jq -nc --arg s "$space" --arg i "$c" \
 wait_for "D's blocker swept after C deleted" blockers_empty "$d"
 wait_for "D TODO after C deleted" status_is "$d" TODO
 
-# 3. Nothing dead-lettered
+# 3. Comments swept by delete. An Issue is deleted whatever its num_comments,
+# unlike a Space, so nothing here has to remove the comment first.
+e="$(create_issue E)"; issues+=("$e")
+invoke create_issue_comment "$(jq -nc --arg s "$space" --arg i "$e" --arg c "$creator" \
+  '{space_id: $s, issue_id: $i, body: "pl8-services smoke test", creator: $c}')" >/dev/null
+if comments_empty "$e"; then
+  echo "FAIL: E's comment missing before E was deleted" >&2
+  exit 1
+fi
+echo "ok: E has a comment"
+invoke delete_issue "$(jq -nc --arg s "$space" --arg i "$e" \
+  '{space_id: $s, issue_id: $i}')" >/dev/null
+wait_for "E's comment swept after E deleted" comments_empty "$e"
+
+# 4. Nothing dead-lettered
 for queue in "${env}-pl8-stream-handler-dlq" "${env}-pl8-event-handler-dlq"; do
   url="$(aws sqs get-queue-url --queue-name "$queue" --query QueueUrl --output text)"
   depth="$(aws sqs get-queue-attributes --queue-url "$url" \

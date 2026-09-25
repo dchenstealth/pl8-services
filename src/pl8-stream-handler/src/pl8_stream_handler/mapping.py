@@ -41,7 +41,8 @@ def events_for_record(record):
     """Map one DynamoDB stream record to the PL8 events it implies.
 
     See pl8-docs architecture/backend/events.md. Only IssueInfo rows produce
-    events; blocker and space rows map to nothing.
+    events; blocker, comment and space rows map to nothing, and so does an
+    IssueInfo change to num_comments alone.
 
     Args:
         record (dict): a DynamoDB stream record, as delivered to Lambda

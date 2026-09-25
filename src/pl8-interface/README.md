@@ -23,9 +23,9 @@ Success:
 `data` is the method's result as plain JSON, without DynamoDB key attributes
 (`PK`, `SK`, `GSI1PK`, ...), or `null` for operations that return nothing (the
 `delete_*` operations). Paginated operations (`get_spaces`,
-`get_issues_by_status`, `get_issue_blockers`, `get_issue_blocking`) return
-`{"items": [...], "cursor": "..." | null}`; pass `cursor` back as a param for
-the next page. `limit` is 1–100 (default 50).
+`get_issues_by_status`, `get_issue_comments`, `get_issue_blockers`,
+`get_issue_blocking`) return `{"items": [...], "cursor": "..." | null}`; pass
+`cursor` back as a param for the next page. `limit` is 1–100 (default 50).
 
 Failure:
 
@@ -54,6 +54,11 @@ Any other exception is not caught, so the invocation itself fails
 the allow-list: each entry names a `BasePL8` method and the JSON Schema for its
 params. Params map 1:1 onto the method's keyword arguments. Entries whose
 method returns `(items, cursor)` set `paginated: true`.
+
+`create_space`, `create_issue` and `create_issue_comment` take a `creator`,
+a label the caller supplies. It is not authenticated: pl8-base records it as
+given and never compares it with the invoking IAM principal, so it says who
+*claims* to have created an item.
 
 To add an operation, add an entry there. `tests/test_operations_yaml.py`
 fails unless the schema's properties and `required` list match the method's
