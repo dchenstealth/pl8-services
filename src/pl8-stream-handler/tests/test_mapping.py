@@ -1,5 +1,13 @@
 import pytest
-from conftest import ISSUE_ID, SPACE_ID, blocker_image, issue_image, record, space_image
+from conftest import (
+    ISSUE_ID,
+    SPACE_ID,
+    blocker_image,
+    comment_image,
+    issue_image,
+    record,
+    space_image,
+)
 
 from pl8_stream_handler.mapping import events_for_record
 
@@ -33,11 +41,16 @@ def names(events):
     # REMOVE
     (record("REMOVE", old=issue_image("TODO")), ["IssueDeleted"]),
     (record("REMOVE", old=issue_image("DONE")), ["IssueDeleted"]),
-    # Other row types
+    # Other row types. The event source mapping filters these out, so they
+    # should never arrive; mapping nothing is what keeps that filter from
+    # being the only thing standing between them and being read as Issues.
     (record("INSERT", new=blocker_image()), []),
     (record("REMOVE", old=blocker_image()), []),
     (record("INSERT", new=space_image()), []),
     (record("REMOVE", old=space_image()), []),
+    (record("INSERT", new=comment_image()), []),
+    (record("MODIFY", old=comment_image(), new=comment_image()), []),
+    (record("REMOVE", old=comment_image()), []),
 ])
 def test_events_for_record(rec, expected):
     assert names(events_for_record(rec)) == expected
@@ -54,3 +67,10 @@ def test_non_issue_info_row_at_issue_info_key_is_ignored():
                "num_active_blockers": {"N": "-1"}}
     assert events_for_record(record("INSERT", new=partial)) == []
     assert events_for_record(record("REMOVE", old=partial)) == []
+
+
+def test_comment_rows_share_the_issue_partition():
+    """A comment's PK is its Issue's, so only the SK keeps it out of the
+    event source mapping's filter; see infra/lambda.tf."""
+    assert comment_image()["PK"] == issue_image()["PK"]
+    assert comment_image()["SK"] != issue_image()["SK"]

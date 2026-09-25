@@ -13,14 +13,17 @@ from pl8_base.types import (
 from pl8_event_handler.manager import RECORD_LOG_KEYS
 
 SPACE = "ENG"
+CREATOR = "alice"
 
 
 @pytest.fixture
 def blocked_pair(mgr):
     """A blocks B, so B is BLOCKED with one active blocker."""
-    mgr.create_space(space_id=SPACE, name=SPACE, description="d")
-    a = mgr.create_issue(space_id=SPACE, title="A", description="d", status="TODO")
-    b = mgr.create_issue(space_id=SPACE, title="B", description="d", status="TODO")
+    mgr.create_space(space_id=SPACE, name=SPACE, description="d", creator=CREATOR)
+    a = mgr.create_issue(space_id=SPACE, title="A", description="d", status="TODO",
+                         creator=CREATOR)
+    b = mgr.create_issue(space_id=SPACE, title="B", description="d", status="TODO",
+                         creator=CREATOR)
     mgr.add_issue_blocker(blocking_issue_space_id=SPACE, blocking_issue_id=a.issue_id,
                           blocked_issue_space_id=SPACE, blocked_issue_id=b.issue_id)
     return a, b
@@ -68,6 +71,19 @@ def test_issue_deleted_sweeps_blockers(mgr, event_manager, blocked_pair):
 
     assert mgr.get_issue_blockers(space_id=SPACE, blocked_issue_id=b.issue_id) == ([], None)
     assert mgr.get_issue(space_id=SPACE, issue_id=b.issue_id).num_active_blockers == 0
+
+
+def test_issue_deleted_sweeps_comments(mgr, event_manager, blocked_pair):
+    """Comments never gate deleting an Issue, so the sweep is what removes
+    them; see pl8-base's handle_issue_deleted."""
+    a, _ = blocked_pair
+    mgr.create_issue_comment(space_id=SPACE, issue_id=a.issue_id, body="b",
+                             creator=CREATOR)
+    mgr.delete_issue(space_id=SPACE, issue_id=a.issue_id)
+
+    assert handle(event_manager, detail(IssueDeleted, a)) == {"batchItemFailures": []}
+
+    assert mgr.get_issue_comments(space_id=SPACE, issue_id=a.issue_id) == ([], None)
 
 
 def test_replayed_events_are_no_ops(mgr, event_manager, blocked_pair):

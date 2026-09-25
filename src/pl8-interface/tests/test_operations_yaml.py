@@ -11,6 +11,8 @@ EXPECTED_OPERATIONS = {
     "create_space", "get_space", "get_spaces", "update_space", "delete_space",
     "create_issue", "get_issue", "get_issues_by_status", "update_issue",
     "transition_issue", "delete_issue",
+    "create_issue_comment", "get_issue_comment", "get_issue_comments",
+    "update_issue_comment", "delete_issue_comment",
     "add_issue_blocker", "delete_issue_blocker",
     "get_issue_blockers", "get_issue_blocking",
 }

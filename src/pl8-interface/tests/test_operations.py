@@ -5,20 +5,29 @@ from pl8_base.errors import DDBInternalError
 @pytest.fixture
 def space(invoke):
     """The ENG Space, which create_issue requires to exist."""
-    response = invoke("create_space", space_id="ENG", name="Eng", description="d")
+    response = invoke("create_space", space_id="ENG", name="Eng", description="d",
+                      creator="alice")
     assert response["ok"] is True
     return response["data"]
 
 
 def create_issue(invoke, status="TODO", space_id="ENG"):
     response = invoke("create_issue", space_id=space_id, title="t",
-                      description="d", status=status)
+                      description="d", status=status, creator="alice")
+    assert response["ok"] is True
+    return response["data"]
+
+
+def create_comment(invoke, issue, body="b", creator="alice"):
+    response = invoke("create_issue_comment", space_id="ENG",
+                      issue_id=issue["issue_id"], body=body, creator=creator)
     assert response["ok"] is True
     return response["data"]
 
 
 def test_space_round_trip(invoke):
-    created = invoke("create_space", space_id="ENG", name="Eng", description="d")
+    created = invoke("create_space", space_id="ENG", name="Eng", description="d",
+                     creator="alice")
     assert created["ok"] is True
 
     fetched = invoke("get_space", space_id="ENG")
@@ -26,6 +35,7 @@ def test_space_round_trip(invoke):
     assert fetched["data"]["space_id"] == "ENG"
     assert fetched["data"]["name"] == "Eng"
     assert fetched["data"]["description"] == "d"
+    assert fetched["data"]["creator"] == "alice"
 
 
 def test_results_omit_storage_keys(invoke, space):
@@ -62,9 +72,16 @@ def test_missing_space_maps_ddb_error(invoke):
 
 def test_issue_in_missing_space_maps_ddb_error(invoke):
     response = invoke("create_issue", space_id="ENG", title="t",
-                      description="d", status="TODO")
+                      description="d", status="TODO", creator="alice")
     assert response["ok"] is False
     assert response["error"]["type"] == "DDBMissingError"
+
+
+def test_empty_creator_maps_ddb_error(invoke):
+    response = invoke("create_space", space_id="ENG", name="Eng", description="d",
+                      creator="")
+    assert response["ok"] is False
+    assert response["error"]["type"] == "DDBArgsError"
 
 
 def test_delete_non_empty_space_maps_ddb_error(invoke, space):
@@ -127,3 +144,93 @@ def test_add_and_get_issue_blockers(invoke, space):
                       blocked_issue_id=blocked["issue_id"])
     blockers = response["data"]["items"]
     assert [b["blocking_issue_id"] for b in blockers] == [blocking["issue_id"]]
+
+
+def test_comment_round_trip(invoke, space):
+    issue = create_issue(invoke)
+    comment = create_comment(invoke, issue, body="first")
+
+    fetched = invoke("get_issue_comment", space_id="ENG",
+                     issue_id=issue["issue_id"],
+                     comment_id=comment["comment_id"])
+    assert fetched["ok"] is True
+    assert fetched["data"]["body"] == "first"
+    assert fetched["data"]["creator"] == "alice"
+
+
+def test_comment_on_missing_issue_maps_ddb_error(invoke, space):
+    response = invoke("create_issue_comment", space_id="ENG", issue_id="nope12",
+                      body="b", creator="alice")
+    assert response["ok"] is False
+    assert response["error"]["type"] == "DDBMissingError"
+
+
+def test_issue_results_include_num_comments(invoke, space):
+    issue = create_issue(invoke)
+    assert issue["num_comments"] == 0
+    create_comment(invoke, issue)
+
+    fetched = invoke("get_issue", space_id="ENG", issue_id=issue["issue_id"])
+    assert fetched["data"]["num_comments"] == 1
+
+
+def test_get_issue_comments_pages_in_creation_order(invoke, space):
+    issue = create_issue(invoke)
+    bodies = [create_comment(invoke, issue, body=str(n))["body"] for n in range(3)]
+
+    first = invoke("get_issue_comments", space_id="ENG",
+                   issue_id=issue["issue_id"], limit=2)
+    page, cursor = first["data"]["items"], first["data"]["cursor"]
+    assert [c["body"] for c in page] == bodies[:2]
+    assert isinstance(cursor, str)
+
+    second = invoke("get_issue_comments", space_id="ENG",
+                    issue_id=issue["issue_id"], limit=2, cursor=cursor)
+    assert [c["body"] for c in second["data"]["items"]] == bodies[2:]
+
+
+def test_update_comment_replaces_the_body(invoke, space):
+    issue = create_issue(invoke)
+    comment = create_comment(invoke, issue, body="first")
+
+    response = invoke("update_issue_comment", space_id="ENG",
+                      issue_id=issue["issue_id"],
+                      comment_id=comment["comment_id"], body="second",
+                      version=comment["version"])
+    assert response["ok"] is True
+    assert response["data"]["body"] == "second"
+    assert response["data"]["creator"] == "alice"
+
+
+def test_stale_comment_version_maps_ddb_error(invoke, space):
+    issue = create_issue(invoke)
+    comment = create_comment(invoke, issue)
+
+    response = invoke("update_issue_comment", space_id="ENG",
+                      issue_id=issue["issue_id"],
+                      comment_id=comment["comment_id"], body="b",
+                      version=comment["version"] + 1)
+    assert response["ok"] is False
+    assert response["error"]["type"] == "DDBVersionConflictError"
+
+
+def test_delete_comment_uncounts_it(invoke, space):
+    issue = create_issue(invoke)
+    comment = create_comment(invoke, issue)
+
+    response = invoke("delete_issue_comment", space_id="ENG",
+                      issue_id=issue["issue_id"],
+                      comment_id=comment["comment_id"])
+    assert response == {"ok": True, "data": None}
+
+    fetched = invoke("get_issue", space_id="ENG", issue_id=issue["issue_id"])
+    assert fetched["data"]["num_comments"] == 0
+
+
+def test_comments_do_not_gate_deleting_the_issue(invoke, space):
+    """The sweep itself is pl8-event-handler's, driven by IssueDeleted."""
+    issue = create_issue(invoke)
+    create_comment(invoke, issue)
+
+    response = invoke("delete_issue", space_id="ENG", issue_id=issue["issue_id"])
+    assert response == {"ok": True, "data": None}

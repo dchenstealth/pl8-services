@@ -1,16 +1,17 @@
 import pytest
 from aws_lambda_powertools import Logger
-from pl8_base.types import IssueBlocker, IssueInfo, SpaceInfo
+from pl8_base.types import IssueBlocker, IssueComment, IssueInfo, SpaceInfo
 
 SPACE_ID = "ENG"
 ISSUE_ID = "abc123"
+CREATOR = "alice"
 
 _sequence = iter(range(1, 1_000_000))
 
 
 def issue_image(status="TODO", num_active_blockers=0, **overrides):
     fields = {"space_id": SPACE_ID, "issue_id": ISSUE_ID, "title": "t",
-              "description": "d", "status": status,
+              "description": "d", "status": status, "creator": CREATOR,
               "num_active_blockers": num_active_blockers} | overrides
     return IssueInfo(**fields).serialize()
 
@@ -24,7 +25,13 @@ def blocker_image():
 
 
 def space_image():
-    return SpaceInfo(space_id=SPACE_ID, name="n", description="d").serialize()
+    return SpaceInfo(space_id=SPACE_ID, name="n", description="d",
+                     creator=CREATOR).serialize()
+
+
+def comment_image():
+    return IssueComment(space_id=SPACE_ID, issue_id=ISSUE_ID, body="b",
+                        creator=CREATOR).serialize()
 
 
 def record(event_name, *, old=None, new=None):
