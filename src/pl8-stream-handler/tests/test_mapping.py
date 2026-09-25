@@ -36,6 +36,11 @@ def names(events):
      ["IssueNumActiveBlockersZeroed"]),
     (record("MODIFY", old=issue_image("BLOCKED", 2), new=issue_image("BLOCKED", 1)), []),
     (record("MODIFY", old=issue_image("BLOCKED", 1), new=issue_image("BLOCKED", 2)), []),
+    # MODIFY: comment counter. Every comment add and delete moves it on the
+    # IssueInfo row, which passes the event source mapping's filter.
+    (record("MODIFY", old=issue_image("TODO"), new=issue_image("TODO", num_comments=1)), []),
+    (record("MODIFY", old=issue_image("DONE", num_comments=1),
+            new=issue_image("DONE", num_comments=0)), []),
     # Unblocked by the event handler: counter already 0, status BLOCKED -> TODO
     (record("MODIFY", old=issue_image("BLOCKED", 0), new=issue_image("TODO", 0)), ["IssueReady"]),
     # REMOVE

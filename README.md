@@ -68,8 +68,10 @@ reaching DONE satisfies its IssueBlockers, which zeroes a blocked Issue's
 counter, which moves that Issue to TODO and emits `IssueReady`.
 
 Only the Issue's own `100#INFO` row produces events, so the stream's event
-source mapping filters everything else out, comments included; `IssueDeleted`
-is what carries a deleted Issue's comments and blockers away with it.
+source mapping filters everything else out, comments included. Adding or
+deleting a comment still invokes the stream handler once, through the
+`num_comments` change on that row, and maps to no event. `IssueDeleted` is
+what carries a deleted Issue's comments and blockers away with it.
 
 Each function's zip, role, log group and function come from
 `infra/modules/lambda_function`.
