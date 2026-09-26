@@ -11,6 +11,11 @@ locals {
     aws_dynamodb_table.pl8_table.arn,
     "${aws_dynamodb_table.pl8_table.arn}/index/GSI1",
   ]
+
+  # Every IssueAttachment object, as an IAM resource. pl8-base keys objects
+  # under space/{space_id}/issue/{issue_id}/..., so this covers the attachment
+  # keyspace and nothing else in the bucket.
+  pl8_attachment_objects = "${aws_s3_bucket.pl8_bucket.arn}/space/*"
 }
 
 # Third-party dependencies shared by every pl8-services Lambda, installed by
@@ -47,24 +52,44 @@ module "pl8_interface" {
 
   environment_variables = {
     PL8_TABLE_NAME          = aws_dynamodb_table.pl8_table.name
+    PL8_BUCKET_NAME         = aws_s3_bucket.pl8_bucket.bucket
     POWERTOOLS_SERVICE_NAME = "pl8-interface"
   }
 
   # Exactly the calls pl8-base's CRUD/query methods make. ConditionCheckItem
   # covers the ConditionCheck inside add_issue_blocker's transaction.
-  policy_statements = [{
-    sid = "PL8TableAccess"
-    actions = [
-      "dynamodb:GetItem",
-      "dynamodb:Query",
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:DeleteItem",
-      "dynamodb:TransactWriteItems",
-      "dynamodb:ConditionCheckItem",
-    ]
-    resources = local.pl8_table_resources
-  }]
+  policy_statements = [
+    {
+      sid = "PL8TableAccess"
+      actions = [
+        "dynamodb:GetItem",
+        "dynamodb:Query",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:TransactWriteItems",
+        "dynamodb:ConditionCheckItem",
+      ]
+      resources = local.pl8_table_resources
+    },
+    {
+      # Attachment uploads and downloads. Generating a presigned URL makes no
+      # API call at all and needs no permission: it is a local signing
+      # operation. The permission is evaluated when the URL is *used*, against
+      # the principal that signed it -- this role -- which is why the
+      # interface genuinely needs PutObject even though it never uploads an
+      # object itself, and why a URL it signs stops working if this statement
+      # is removed.
+      #
+      # GetObject covers HeadObject too: S3 authorizes a HEAD as
+      # s3:GetObject, and there is no separate s3:HeadObject action. That is
+      # what lets confirm_issue_attachment_uploaded check the object landed,
+      # and what the presigned download URL is signed against.
+      sid       = "PL8AttachmentObjectAccess"
+      actions   = ["s3:PutObject", "s3:GetObject"]
+      resources = [local.pl8_attachment_objects]
+    },
+  ]
 
   # Agents are granted invoke on functions carrying this tag, outside this repo.
   tags = {
@@ -156,15 +181,30 @@ resource "aws_lambda_event_source_mapping" "pl8_stream_handler" {
     }
   }
 
-  # Only IssueInfo rows produce events (see src/pl8-stream-handler), so
-  # blocker, comment and space rows never invoke the function. SpaceInfo
-  # shares the 100#INFO SK, hence the PK prefix too, and an IssueComment
-  # shares its Issue's PK, so the SK is what excludes it. The Issue counters
-  # a blocker or comment write moves in the same transaction are on the
-  # IssueInfo row, so those still invoke it: a num_active_blockers change can
-  # emit an event, a num_comments change never does. Both come from
-  # IssueInfo.KEY_ATTRS in pl8-base (pl8_base/types/issue.py); keep them in
-  # step if the key format changes.
+  # Three kinds of row reach the handler (see src/pl8-stream-handler); every
+  # other write is dropped before it can invoke the function. Multiple filter
+  # blocks are OR'd.
+  #
+  # 1. IssueInfo rows, on any change: creates, status transitions and the
+  #    counter moves a blocker or comment write makes in the same transaction.
+  #    A num_active_blockers change can emit an event; a num_comments change
+  #    never does. SpaceInfo shares the 100#INFO SK, hence the PK prefix too.
+  # 2. IssueComment deletions, which emit IssueCommentDeleted.
+  # 3. IssueAttachment deletions, which emit IssueAttachmentDeleted. A TTL
+  #    expiry of a PENDING attachment arrives as an ordinary REMOVE and is
+  #    matched here too; that is how an orphaned S3 object gets reaped.
+  #
+  # Scoping the comment and attachment filters to eventName REMOVE is
+  # essential, not an optimization: comment writes are likely the
+  # highest-volume write in the system, and an unscoped SK-prefix filter would
+  # invoke this function for every create and edit only for the mapping to
+  # return no events. REMOVE is the one event these rows have a cascade for,
+  # and matching only it keeps that traffic away while still delivering the
+  # deletions the cascade needs.
+  #
+  # The SK literals come from IssueInfo/IssueComment/IssueAttachment.KEY_ATTRS
+  # in pl8-base (pl8_base/types/issue.py); keep them in step if a key format
+  # changes.
   filter_criteria {
     filter {
       pattern = jsonencode({
@@ -172,6 +212,30 @@ resource "aws_lambda_event_source_mapping" "pl8_stream_handler" {
           Keys = {
             PK = { S = [{ prefix = "ISSUE#" }] }
             SK = { S = ["100#INFO"] }
+          }
+        }
+      })
+    }
+
+    filter {
+      pattern = jsonencode({
+        eventName = ["REMOVE"]
+        dynamodb = {
+          Keys = {
+            PK = { S = [{ prefix = "ISSUE#" }] }
+            SK = { S = [{ prefix = "500#COMMENT#" }] }
+          }
+        }
+      })
+    }
+
+    filter {
+      pattern = jsonencode({
+        eventName = ["REMOVE"]
+        dynamodb = {
+          Keys = {
+            PK = { S = [{ prefix = "ISSUE#" }] }
+            SK = { S = [{ prefix = "600#ATTACHMENT#" }] }
           }
         }
       })
@@ -194,6 +258,7 @@ module "pl8_event_handler" {
 
   environment_variables = {
     PL8_TABLE_NAME          = aws_dynamodb_table.pl8_table.name
+    PL8_BUCKET_NAME         = aws_s3_bucket.pl8_bucket.bucket
     POWERTOOLS_SERVICE_NAME = "pl8-event-handler"
   }
 
@@ -222,6 +287,14 @@ module "pl8_event_handler" {
         "dynamodb:ConditionCheckItem",
       ]
       resources = local.pl8_table_resources
+    },
+    {
+      # handle_issue_attachment_deleted removes the object an attachment row
+      # pointed at, whether the row was deleted explicitly or expired by TTL.
+      # Delete only: this function never reads or writes object bytes.
+      sid       = "PL8AttachmentObjectDelete"
+      actions   = ["s3:DeleteObject"]
+      resources = [local.pl8_attachment_objects]
     },
   ]
 }

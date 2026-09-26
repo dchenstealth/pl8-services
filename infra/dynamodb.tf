@@ -12,6 +12,17 @@ resource "aws_dynamodb_table" "pl8_table" {
   stream_enabled   = true
   stream_view_type = "NEW_AND_OLD_IMAGES"
 
+  # Table-wide, but only IssueAttachment rows write expires_at: a PENDING
+  # attachment whose upload never completed expires, and the REMOVE that
+  # follows is what reaps its S3 object (see src/pl8-stream-handler). No other
+  # row type sets the attribute, and a row without it never expires, so
+  # enabling this here costs nothing elsewhere. Without it the reaping design
+  # is inert.
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
   on_demand_throughput {
     max_read_request_units  = var.pl8_table_on_demand_read_request_units
     max_write_request_units = var.pl8_table_on_demand_write_request_units

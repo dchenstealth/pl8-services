@@ -4,10 +4,13 @@
 #   1. A blocks B; A -> DONE; B must reach TODO.
 #   2. C blocks D; C deleted; the IssueBlocker must be swept and D reach TODO.
 #   3. E gets a comment and is deleted; the IssueComment must be swept.
-#   4. Both DLQs must be empty.
+#   4. F gets an attachment: the bytes are POSTed to the presigned target,
+#      confirmed and downloaded back; F is then deleted and both the
+#      IssueAttachment row and its S3 object must be swept.
+#   5. Both DLQs must be empty.
 # Creates its own Space and deletes it (and its Issues) on exit, pass or fail.
 #
-# Usage: scripts/smoke-test.sh <environment>   (requires aws, jq)
+# Usage: scripts/smoke-test.sh <environment>   (requires aws, jq, curl)
 set -euo pipefail
 
 env="${1:?usage: $0 <environment>}"
@@ -18,6 +21,8 @@ timeout_seconds=120
 tmp="$(mktemp -d)"
 space_created=false
 issues=()
+bucket=""
+attachment_key=""
 
 invoke() {
   local operation="$1" params="$2"
@@ -51,6 +56,19 @@ block() {
       blocked_issue_space_id: $s, blocked_issue_id: $b}')" >/dev/null
 }
 
+# Uploads a file to a presigned POST target. Every field S3 signed for has to
+# be sent, and the file part must come last, or S3 rejects the request.
+post_to_s3() {
+  local target="$1" file="$2"
+  local -a form=()
+  local field value
+  while IFS=$'\t' read -r field value; do
+    form+=(--form "$field=$value")
+  done < <(jq -r '.fields | to_entries[] | [.key, .value] | @tsv' <<<"$target")
+  curl --fail --silent --show-error -X POST "${form[@]}" \
+    --form "file=@$file" "$(jq -r .url <<<"$target")" >/dev/null
+}
+
 wait_for() {
   local description="$1"; shift
   local deadline=$((SECONDS + timeout_seconds))
@@ -77,6 +95,12 @@ cleanup() {
     (invoke delete_issue "$(jq -nc --arg s "$space" --arg i "$issue" \
       '{space_id: $s, issue_id: $i}')") >/dev/null 2>&1
   done
+  # An object whose row was swept is already gone; this covers a run that
+  # failed between the upload and the sweep.
+  if [[ -n "$attachment_key" ]]; then
+    aws s3api delete-object --bucket "$bucket" --key "$attachment_key" \
+      >/dev/null 2>&1
+  fi
   if [[ "$space_created" == true ]]; then
     (invoke delete_space "$(jq -nc --arg s "$space" '{space_id: $s}')") >/dev/null 2>&1 \
       || echo "warning: could not delete Space $space" >&2
@@ -85,6 +109,16 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
+
+# The bucket is named account-regionally (see infra/s3.tf), so it is matched by
+# prefix rather than composed here.
+bucket="$(aws s3api list-buckets \
+  --query "Buckets[?starts_with(Name, '${env}-pl8-bucket')].Name | [0]" \
+  --output text)"
+if [[ -z "$bucket" || "$bucket" == "None" ]]; then
+  echo "FAIL: no ${env}-pl8-bucket in this account and region" >&2
+  exit 1
+fi
 
 status_is() { [[ "$(issue_field "$1" status)" == "$2" ]]; }
 
@@ -96,6 +130,15 @@ blockers_empty() {
 comments_empty() {
   [[ "$(invoke get_issue_comments "$(jq -nc --arg s "$space" --arg i "$1" \
     '{space_id: $s, issue_id: $i}')" | jq '.items | length')" == 0 ]]
+}
+
+attachments_empty() {
+  [[ "$(invoke get_issue_attachments "$(jq -nc --arg s "$space" --arg i "$1" \
+    '{space_id: $s, issue_id: $i}')" | jq '.items | length')" == 0 ]]
+}
+
+object_gone() {
+  ! aws s3api head-object --bucket "$bucket" --key "$1" >/dev/null 2>&1
 }
 
 invoke create_space "$(jq -nc --arg s "$space" --arg c "$creator" \
@@ -140,7 +183,50 @@ invoke delete_issue "$(jq -nc --arg s "$space" --arg i "$e" \
   '{space_id: $s, issue_id: $i}')" >/dev/null
 wait_for "E's comment swept after E deleted" comments_empty "$e"
 
-# 4. Nothing dead-lettered
+# 4. Attachment round trip, then swept by delete. initiate answers with the
+# attachment plus an `upload` target (`url` and the form `fields` to POST
+# with); get_issue_attachment answers with the attachment plus a
+# `download_url`, which is null until the attachment is UPLOADED (see
+# pl8-interface's operations.yaml). The object key is read from the signed
+# fields rather than from the attachment or recomposed, because that field is
+# what S3 will actually write to.
+f="$(create_issue F)"; issues+=("$f")
+printf 'pl8-services smoke test attachment\n' > "$tmp/attachment.txt"
+size="$(wc -c < "$tmp/attachment.txt" | tr -d ' ')"
+initiated="$(invoke initiate_issue_attachment_upload \
+  "$(jq -nc --arg s "$space" --arg i "$f" --arg c "$creator" --argjson z "$size" \
+    '{space_id: $s, issue_id: $i, name: "attachment.txt",
+      content_type: "text/plain", size: $z, creator: $c}')")"
+attachment_id="$(jq -r .attachment.attachment_id <<<"$initiated")"
+attachment_key="$(jq -r .upload.fields.key <<<"$initiated")"
+post_to_s3 "$(jq -c .upload <<<"$initiated")" "$tmp/attachment.txt"
+echo "ok: attachment bytes accepted by S3"
+
+invoke confirm_issue_attachment_uploaded "$(jq -nc --arg s "$space" --arg i "$f" \
+  --arg a "$attachment_id" \
+  '{space_id: $s, issue_id: $i, attachment_id: $a}')" >/dev/null
+downloadable="$(invoke get_issue_attachment "$(jq -nc --arg s "$space" --arg i "$f" \
+  --arg a "$attachment_id" \
+  '{space_id: $s, issue_id: $i, attachment_id: $a}')")"
+download_url="$(jq -r '.download_url // empty' <<<"$downloadable")"
+if [[ -z "$download_url" ]]; then
+  echo "FAIL: no download URL for a confirmed attachment -> $downloadable" >&2
+  exit 1
+fi
+curl --fail --silent --show-error --output "$tmp/downloaded.txt" "$download_url"
+if ! cmp -s "$tmp/attachment.txt" "$tmp/downloaded.txt"; then
+  echo "FAIL: downloaded attachment differs from what was uploaded" >&2
+  exit 1
+fi
+echo "ok: attachment confirmed and downloaded unchanged"
+
+invoke delete_issue "$(jq -nc --arg s "$space" --arg i "$f" \
+  '{space_id: $s, issue_id: $i}')" >/dev/null
+wait_for "F's attachment row swept after F deleted" attachments_empty "$f"
+wait_for "F's S3 object reaped after F deleted" object_gone "$attachment_key"
+attachment_key=""
+
+# 5. Nothing dead-lettered
 for queue in "${env}-pl8-stream-handler-dlq" "${env}-pl8-event-handler-dlq"; do
   url="$(aws sqs get-queue-url --queue-name "$queue" --query QueueUrl --output text)"
   depth="$(aws sqs get-queue-attributes --queue-url "$url" \

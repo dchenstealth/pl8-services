@@ -1,16 +1,20 @@
+import inspect
 import json
 
 import pytest
 from conftest import sqs_record
 from pl8_base.errors import DDBInternalError
+from pl8_base.manager import BasePL8
 from pl8_base.types import (
+    IssueAttachmentDeleted,
+    IssueCommentDeleted,
     IssueDeleted,
     IssueDone,
     IssueNumActiveBlockersZeroed,
     IssueReady,
 )
 
-from pl8_event_handler.manager import RECORD_LOG_KEYS
+from pl8_event_handler.manager import HANDLERS, RECORD_LOG_KEYS, event_fields
 
 SPACE = "ENG"
 CREATOR = "alice"
@@ -181,3 +185,49 @@ def test_entire_batch_failing_reports_every_record(mgr, event_manager, monkeypat
 def test_record_log_keys_do_not_outlive_the_batch(event_manager, logger):
     handle(event_manager, noop())
     assert not set(RECORD_LOG_KEYS) & set(logger.get_current_keys())
+
+
+@pytest.mark.parametrize(("event_cls", "method", "extra_ids"), [
+    (IssueCommentDeleted, "handle_issue_comment_deleted", {"comment_id": "c001"}),
+    (IssueAttachmentDeleted, "handle_issue_attachment_deleted",
+     {"attachment_id": "a001"}),
+])
+def test_cascade_event_dispatches_with_its_own_ids(mgr, event_manager, monkeypatch,
+                                                  event_cls, method, extra_ids):
+    """The two cascade events name a third entity, so dispatch cannot assume
+    every handler takes space_id and issue_id alone."""
+    calls = []
+    monkeypatch.setattr(mgr, method, lambda **kwargs: calls.append(kwargs))
+    detail = event_cls(space_id=SPACE, issue_id="abc123", **extra_ids).dict()
+
+    assert handle(event_manager, detail) == {"batchItemFailures": []}
+
+    assert calls == [{"space_id": SPACE, "issue_id": "abc123"} | extra_ids]
+
+
+@pytest.mark.parametrize(("event_cls", "handler"), HANDLERS.items(),
+                         ids=lambda value: getattr(value, "__name__", value))
+def test_handler_fields_match_the_method_signature(event_cls, handler):
+    """Each event's field tuple is what the dispatch splats, so it must be
+    exactly the handler's kwargs, and every one must exist on the event."""
+    method, fields = handler
+    params = inspect.signature(getattr(BasePL8, method)).parameters.values()
+    kwonly = {p.name for p in params
+              if p.kind is inspect.Parameter.KEYWORD_ONLY}
+
+    assert set(fields) == kwonly
+    assert set(fields) <= set(event_cls.__struct_fields__)
+
+
+def test_every_handled_id_field_is_a_record_log_key():
+    """Otherwise an id appended for one record outlives it."""
+    for _, fields in HANDLERS.values():
+        assert set(fields) <= set(RECORD_LOG_KEYS)
+
+
+def test_event_fields_are_the_events_own_ids():
+    event = IssueAttachmentDeleted(space_id=SPACE, issue_id="abc123",
+                                   attachment_id="a001")
+
+    assert event_fields(event) == {"space_id": SPACE, "issue_id": "abc123",
+                                  "attachment_id": "a001"}

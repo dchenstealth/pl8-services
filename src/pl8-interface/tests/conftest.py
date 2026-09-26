@@ -7,6 +7,7 @@ from pl8_base.manager import BasePL8
 from pl8_interface.manager import InterfaceManager
 
 TABLE_NAME = "test-pl8-table"
+BUCKET_NAME = "test-pl8-bucket"
 REGION = "us-east-1"
 
 
@@ -60,13 +61,27 @@ def dynamodb_client(mocked_aws, table_name):
 
 
 @pytest.fixture
+def bucket_name():
+    return BUCKET_NAME
+
+
+@pytest.fixture
+def s3_client(mocked_aws, bucket_name):
+    """The attachment bucket. us-east-1 takes no LocationConstraint."""
+    client = boto3.client("s3", region_name=REGION)
+    client.create_bucket(Bucket=bucket_name)
+    return client
+
+
+@pytest.fixture
 def logger():
     return Logger(service="pl8-interface-test", level="DEBUG")
 
 
 @pytest.fixture
-def mgr(dynamodb_client, table_name, logger):
+def mgr(dynamodb_client, table_name, s3_client, bucket_name, logger):
     return BasePL8(dynamodb_client=dynamodb_client, table_name=table_name,
+                   s3_client=s3_client, bucket_name=bucket_name,
                    logger=logger)
 
 

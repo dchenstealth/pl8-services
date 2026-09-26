@@ -1,5 +1,14 @@
 import pytest
-from pl8_base.errors import DDBInternalError
+import yaml
+from pl8_base.errors import (
+    DDBAttachmentStatusError,
+    DDBInternalError,
+    StorageInternalError,
+    StorageObjectMissingError,
+)
+from pl8_base.types import SpaceInfo
+
+from pl8_interface.manager import InterfaceManager
 
 
 @pytest.fixture
@@ -234,3 +243,94 @@ def test_comments_do_not_gate_deleting_the_issue(invoke, space):
 
     response = invoke("delete_issue", space_id="ENG", issue_id=issue["issue_id"])
     assert response == {"ok": True, "data": None}
+
+
+@pytest.fixture
+def named_result_invoke(mgr, logger, tmp_path):
+    """An interface whose one operation names the parts of its result tuple.
+
+    Marked on a plain read here, so the unpacking is exercised on its own
+    rather than through whichever attachment operation happens to return what.
+    """
+    path = tmp_path / "operations.yaml"
+    path.write_text(yaml.safe_dump({"operations": [{
+        "method": "get_space",
+        "returns": ["space", "upload"],
+        "schema": {"type": "object", "additionalProperties": False,
+                   "required": ["space_id"],
+                   "properties": {"space_id": {"type": "string"}}},
+    }]}))
+    interface = InterfaceManager(mgr, logger, operations=path)
+
+    def _invoke(**params):
+        return interface.handle_event({"operation": "get_space",
+                                       "params": params})
+    return _invoke
+
+
+def test_named_result_shapes_the_entity_and_passes_the_rest(named_result_invoke,
+                                                            mgr, monkeypatch):
+    """A tuple of an entity plus a presigned target: the entity is shaped like
+    any other result, and what is not an entity attribute is carried through
+    untouched, under the names operations.yaml gave."""
+    space = SpaceInfo(space_id="ENG", name="Eng", description="d",
+                      creator="alice")
+    upload = {"url": "https://example.invalid/upload",
+              "fields": {"key": "space/ENG/object"}}
+    monkeypatch.setattr(mgr, "get_space", lambda **kwargs: (space, upload))
+
+    data = named_result_invoke(space_id="ENG")["data"]
+
+    assert data.keys() == {"space", "upload"}
+    assert data["upload"] == upload
+    assert data["space"]["space_id"] == "ENG"
+    assert not {"PK", "SK", "GSI1PK", "GSI1SK"} & data["space"].keys()
+
+
+def test_named_result_carries_a_null_part(named_result_invoke, mgr, monkeypatch):
+    """get_issue_attachment's download URL is None until the attachment is
+    UPLOADED, and null is a result, not a missing key."""
+    space = SpaceInfo(space_id="ENG", name="Eng", description="d",
+                      creator="alice")
+    monkeypatch.setattr(mgr, "get_space", lambda **kwargs: (space, None))
+
+    assert named_result_invoke(space_id="ENG")["data"]["upload"] is None
+
+
+@pytest.mark.parametrize("result", [
+    ("one",),
+    ("one", "two", "three"),
+])
+def test_named_result_length_mismatch_faults(named_result_invoke, mgr, monkeypatch,
+                                             result):
+    """The marker and the method disagreeing would drop or invent a part, so it
+    faults rather than answering with a half-shaped result."""
+    monkeypatch.setattr(mgr, "get_space", lambda **kwargs: result)
+
+    with pytest.raises(ValueError, match="get_space"):
+        named_result_invoke(space_id="ENG")
+
+
+@pytest.mark.parametrize(("exc", "expected_message"), [
+    # A storage fault is hidden like a database fault: the detail would name
+    # the bucket.
+    (StorageInternalError("arn:aws:s3:::secret-bucket"), "Internal error"),
+    # Caller-fixable: the bytes were never POSTed, so there is nothing to
+    # confirm. Escaping as a FunctionError would report this as a fault.
+    (StorageObjectMissingError("Object not found"), "Object not found"),
+    # The row is not PENDING, so the caller already confirmed it.
+    (DDBAttachmentStatusError("Attachment is not PENDING"),
+     "Attachment is not PENDING"),
+])
+def test_attachment_errors_map_to_error_responses(invoke, mgr, monkeypatch, exc,
+                                                  expected_message):
+    def boom(**kwargs):
+        raise exc
+
+    monkeypatch.setattr(mgr, "confirm_issue_attachment_uploaded", boom)
+
+    response = invoke("confirm_issue_attachment_uploaded", space_id="ENG",
+                      issue_id="abc123", attachment_id="att001")
+
+    assert response == {"ok": False, "error": {"type": type(exc).__name__,
+                                               "message": expected_message}}

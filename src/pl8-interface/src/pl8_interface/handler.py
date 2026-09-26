@@ -11,6 +11,11 @@ manager = InterfaceManager(
     BasePL8(
         dynamodb_client=boto3.client("dynamodb"),
         table_name=os.environ["PL8_TABLE_NAME"],
+        # The attachment operations sign presigned URLs against this client's
+        # credentials, so it must be the function's own role; see
+        # infra/lambda.tf.
+        s3_client=boto3.client("s3"),
+        bucket_name=os.environ["PL8_BUCKET_NAME"],
         logger=logger,
     ),
     logger,

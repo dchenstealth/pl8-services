@@ -3,20 +3,59 @@ from aws_lambda_powertools.utilities.batch import (
     EventType,
     process_partial_response,
 )
-from pl8_base.types import IssueDeleted, IssueDone, IssueNumActiveBlockersZeroed
+from pl8_base.types import (
+    IssueAttachmentDeleted,
+    IssueCommentDeleted,
+    IssueDeleted,
+    IssueDone,
+    IssueNumActiveBlockersZeroed,
+)
 from pl8_base.util import parse_event
 
-# Core lifecycle events and the BasePL8 handler each one drives. Must match
-# the detail-types infra/eventbridge.tf routes to this function's queue.
+# Core lifecycle events, and for each the BasePL8 handler it drives and the
+# event fields that handler is called with. The fields are carried per event
+# rather than assumed, because they differ: the two cascade events name a
+# comment or an attachment as well as its Issue. tests/test_manager.py checks
+# each tuple against the method's own signature. Must match the detail-types
+# infra/eventbridge.tf routes to this function's queue.
 HANDLERS = {
-    IssueDone: "handle_issue_done",
-    IssueDeleted: "handle_issue_deleted",
-    IssueNumActiveBlockersZeroed: "handle_issue_num_active_blockers_zeroed",
+    IssueDone: ("handle_issue_done", ("space_id", "issue_id")),
+    IssueDeleted: ("handle_issue_deleted", ("space_id", "issue_id")),
+    IssueNumActiveBlockersZeroed: ("handle_issue_num_active_blockers_zeroed",
+                                   ("space_id", "issue_id")),
+    IssueCommentDeleted: ("handle_issue_comment_deleted",
+                          ("space_id", "issue_id", "comment_id")),
+    IssueAttachmentDeleted: ("handle_issue_attachment_deleted",
+                             ("space_id", "issue_id", "attachment_id")),
 }
 
+# Fields every event carries as part of its envelope. What is left is the ids
+# naming what the event is about, which is what gets logged.
+EVENT_ENVELOPE_FIELDS = frozenset({"type", "type_version", "event_id",
+                                   "sent_at"})
+
 # Per-record log keys. Reset for every record, so one record's keys never
-# appear on the next record's log lines.
-RECORD_LOG_KEYS = ("message_id", "event_type", "event_id", "space_id", "issue_id")
+# appear on the next record's log lines. Must list every id field any handled
+# event can carry, since those are appended per record: an event type carrying
+# a new id needs it added here, or that id outlives its record.
+RECORD_LOG_KEYS = ("message_id", "event_type", "event_id", "space_id",
+                   "issue_id", "comment_id", "attachment_id")
+
+
+def event_fields(pl8_event):
+    """The ids an event carries, as log keys.
+
+    Read off the event rather than spelled out, so an event carrying a third
+    id logs it and an unhandled event still logs what it names.
+
+    Args:
+        pl8_event (BaseEvent): the event being logged
+
+    Returns:
+        dict: the event's non-envelope fields
+    """
+    return {key: value for key, value in pl8_event.dict().items()
+            if key not in EVENT_ENVELOPE_FIELDS}
 
 
 class UnhandledEventError(Exception):
@@ -74,13 +113,13 @@ class EventManager:
         event_type = type(pl8_event).__name__
         self._logger.append_keys(event_type=event_type,
                                  event_id=pl8_event.event_id,
-                                 space_id=pl8_event.space_id,
-                                 issue_id=pl8_event.issue_id)
+                                 **event_fields(pl8_event))
 
-        method = HANDLERS.get(type(pl8_event))
-        if method is None:
+        handler = HANDLERS.get(type(pl8_event))
+        if handler is None:
             raise UnhandledEventError(f"No handler for {event_type}")
 
-        getattr(self._pl8, method)(space_id=pl8_event.space_id,
-                                   issue_id=pl8_event.issue_id)
+        method, fields = handler
+        getattr(self._pl8, method)(
+            **{field: getattr(pl8_event, field) for field in fields})
         self._logger.info("Handled event")

@@ -26,3 +26,6 @@ provider "aws" {
 }
 
 data "aws_caller_identity" "current" {}
+
+# Composes the account-regional S3 bucket name; see s3.tf.
+data "aws_region" "current" {}
