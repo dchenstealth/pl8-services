@@ -102,7 +102,7 @@ class EventManager:
                 EventBridge envelope
             EventCorruptedError: if its detail isn't a valid PL8 event
             UnhandledEventError: if the event isn't a core lifecycle event
-            DDBError: if the handle_* call fails
+            DDBError, StorageError: if the handle_* call fails
         """
         self._logger.append_keys(**(dict.fromkeys(RECORD_LOG_KEYS)
                                     | {"message_id": record.message_id}))
