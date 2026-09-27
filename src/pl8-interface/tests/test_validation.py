@@ -28,6 +28,8 @@ def test_unknown_operation(interface, operation):
     ("get_spaces", {"limit": 101}),
     ("create_issue", {"space_id": "ENG", "title": "t", "description": "d",
                       "status": "WONTFIX"}),
+    ("update_space", {"space_id": "ENG"}),
+    ("update_space", {"space_id": "ENG", "version": 1}),
     ("update_issue", {"space_id": "ENG", "issue_id": "abc123"}),
     ("update_issue", {"space_id": "ENG", "issue_id": "abc123",
                       "version": 1}),

@@ -117,6 +117,15 @@ def test_transition_issue(invoke, space):
     assert response["data"]["status"] == "IN_PROGRESS"
 
 
+@pytest.mark.parametrize("field, other", [("name", "description"),
+                                          ("description", "name")])
+def test_update_space_changes_one_field_alone(invoke, space, field, other):
+    response = invoke("update_space", space_id="ENG", **{field: "new"})
+    assert response["ok"] is True
+    assert response["data"][field] == "new"
+    assert response["data"][other] == space[other]
+
+
 @pytest.mark.parametrize("field, other", [("title", "description"),
                                           ("description", "title")])
 def test_update_issue_changes_one_field_alone(invoke, space, field, other):
