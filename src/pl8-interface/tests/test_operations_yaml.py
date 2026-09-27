@@ -12,7 +12,11 @@ EXPECTED_OPERATIONS = {
     "create_issue", "get_issue", "get_issues_by_status", "update_issue",
     "transition_issue", "delete_issue",
     "create_issue_comment", "get_issue_comment", "get_issue_comments",
-    "update_issue_comment", "delete_issue_comment",
+    "get_issue_comments_after", "update_issue_comment", "delete_issue_comment",
+    "initiate_issue_attachment_upload", "resign_issue_attachment_upload",
+    "confirm_issue_attachment_uploaded", "get_issue_attachment",
+    "get_issue_attachments", "get_issue_comment_attachments",
+    "delete_issue_attachment",
     "add_issue_blocker", "delete_issue_blocker",
     "get_issue_blockers", "get_issue_blocking",
 }
@@ -43,6 +47,45 @@ def test_schema_matches_signature(entry):
 
     if "status" in schema["properties"]:
         assert set(schema["properties"]["status"]["enum"]) == set(IssueStatus)
+
+
+@pytest.mark.parametrize("entry", ENTRIES, ids=lambda e: e["method"])
+def test_response_shape_markers_are_exclusive(entry):
+    """paginated: true and returns: [names] are the two shapes an operation's
+    result can take beyond a single entity; nothing may claim both."""
+    names = entry.get("returns")
+
+    if names is not None:
+        assert isinstance(names, list)
+        assert names and all(isinstance(name, str) and name for name in names)
+        assert len(set(names)) == len(names)
+        assert not entry.get("paginated", False)
+
+
+@pytest.mark.parametrize("returns", [
+    "dict",             # the shape, not the names
+    [],                 # a tuple of nothing
+    ["attachment", ""],
+    ["attachment", "attachment"],
+])
+def test_rejects_malformed_returns(tmp_path, mgr, logger, returns):
+    path = tmp_path / "operations.yaml"
+    path.write_text(yaml.safe_dump({"operations": [
+        {"method": "get_space", "returns": returns,
+         "schema": {"type": "object"}}]}))
+
+    with pytest.raises(ValueError, match="get_space"):
+        InterfaceManager(mgr, logger, operations=path)
+
+
+def test_rejects_returns_combined_with_paginated(tmp_path, mgr, logger):
+    path = tmp_path / "operations.yaml"
+    path.write_text(yaml.safe_dump({"operations": [
+        {"method": "get_spaces", "returns": ["items", "cursor"],
+         "paginated": True, "schema": {"type": "object"}}]}))
+
+    with pytest.raises(ValueError, match="get_spaces"):
+        InterfaceManager(mgr, logger, operations=path)
 
 
 @pytest.mark.parametrize("method", ["handle_issue_done", "_private", "no_such_method"])

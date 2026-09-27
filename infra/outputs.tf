@@ -8,6 +8,16 @@ output "pl8_table_stream_arn" {
   description = "Stream ARN for the pl8 table, consumed by pl8-stream-handler"
 }
 
+output "pl8_bucket_name" {
+  value       = aws_s3_bucket.pl8_bucket.bucket
+  description = "Name of the S3 bucket holding IssueAttachment objects"
+}
+
+output "pl8_bucket_arn" {
+  value       = aws_s3_bucket.pl8_bucket.arn
+  description = "ARN of the S3 bucket holding IssueAttachment objects"
+}
+
 output "pl8_event_bus_name" {
   value       = aws_cloudwatch_event_bus.pl8.name
   description = "Name of the pl8 EventBridge event bus"

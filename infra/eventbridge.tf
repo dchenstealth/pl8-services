@@ -15,6 +15,8 @@ resource "aws_cloudwatch_event_rule" "core_lifecycle" {
       "IssueNumActiveBlockersZeroed",
       "IssueDeleted",
       "IssueDone",
+      "IssueCommentDeleted",
+      "IssueAttachmentDeleted",
     ]
   })
 }

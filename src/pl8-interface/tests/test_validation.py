@@ -28,6 +28,27 @@ def test_unknown_operation(interface, operation):
     ("get_spaces", {"limit": 101}),
     ("create_issue", {"space_id": "ENG", "title": "t", "description": "d",
                       "status": "WONTFIX"}),
+    ("update_space", {"space_id": "ENG"}),
+    ("update_space", {"space_id": "ENG", "version": 1}),
+    ("update_issue", {"space_id": "ENG", "issue_id": "abc123"}),
+    ("update_issue", {"space_id": "ENG", "issue_id": "abc123",
+                      "version": 1}),
+    # An attachment must name a size, and an empty or oversized one is
+    # rejected here rather than by S3 after the caller has the target.
+    ("initiate_issue_attachment_upload",
+     {"space_id": "ENG", "issue_id": "abc123", "name": "a.txt",
+      "content_type": "text/plain", "creator": "alice"}),
+    ("initiate_issue_attachment_upload",
+     {"space_id": "ENG", "issue_id": "abc123", "name": "a.txt",
+      "content_type": "text/plain", "size": 0, "creator": "alice"}),
+    ("initiate_issue_attachment_upload",
+     {"space_id": "ENG", "issue_id": "abc123", "name": "a.txt",
+      "content_type": "text/plain", "size": 104857601, "creator": "alice"}),
+    ("get_issue_attachments", {"space_id": "ENG", "issue_id": "abc123",
+                               "ascending": "yes"}),
+    # "after" has only one sensible order, so it takes no ascending.
+    ("get_issue_comments_after", {"space_id": "ENG", "issue_id": "abc123",
+                                  "ascending": True}),
 ])
 def test_invalid_params(invoke, operation, params):
     response = invoke(operation, **params)

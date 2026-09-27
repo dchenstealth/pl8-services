@@ -11,6 +11,10 @@ manager = EventManager(
     BasePL8(
         dynamodb_client=boto3.client("dynamodb"),
         table_name=os.environ["PL8_TABLE_NAME"],
+        # handle_issue_attachment_deleted deletes the object its row pointed
+        # at, so this function needs the bucket as well as the table.
+        s3_client=boto3.client("s3"),
+        bucket_name=os.environ["PL8_BUCKET_NAME"],
         logger=logger,
     ),
     logger,

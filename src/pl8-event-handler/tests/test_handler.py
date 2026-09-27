@@ -14,8 +14,9 @@ CONTEXT = SimpleNamespace(
 
 
 @pytest.fixture
-def handler(monkeypatch, dynamodb_client, table_name):
+def handler(monkeypatch, dynamodb_client, table_name, s3_client, bucket_name):
     monkeypatch.setenv("PL8_TABLE_NAME", table_name)
+    monkeypatch.setenv("PL8_BUCKET_NAME", bucket_name)
     import pl8_event_handler.handler
     return importlib.reload(pl8_event_handler.handler)
 
