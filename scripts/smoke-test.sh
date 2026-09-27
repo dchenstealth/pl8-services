@@ -38,6 +38,21 @@ invoke() {
   jq -c .data "$tmp/out.json"
 }
 
+# Invokes an operation that must fail with error type $3.
+invoke_expecting_error() {
+  local operation="$1" params="$2" expected="$3" actual
+  aws lambda invoke --function-name "$function_name" \
+    --cli-binary-format raw-in-base64-out \
+    --payload "$(jq -nc --arg op "$operation" --argjson p "$params" \
+      '{operation: $op, params: $p}')" \
+    "$tmp/out.json" >/dev/null
+  actual="$(jq -r '.error.type // empty' "$tmp/out.json")"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "FAIL: $operation $params -> expected $expected, got $(cat "$tmp/out.json")" >&2
+    exit 1
+  fi
+}
+
 create_issue() {
   invoke create_issue "$(jq -nc --arg s "$space" --arg t "$1" --arg c "$creator" \
     '{space_id: $s, title: $t, description: "pl8-services smoke test",
@@ -199,6 +214,15 @@ initiated="$(invoke initiate_issue_attachment_upload \
       content_type: "text/plain", size: $z, creator: $c}')")"
 attachment_id="$(jq -r .attachment.attachment_id <<<"$initiated")"
 attachment_key="$(jq -r .upload.fields.key <<<"$initiated")"
+
+# Confirming before the bytes land must be retryable, not an internal error;
+# it depends on the interface role being able to list the bucket.
+invoke_expecting_error confirm_issue_attachment_uploaded \
+  "$(jq -nc --arg s "$space" --arg i "$f" --arg a "$attachment_id" \
+    '{space_id: $s, issue_id: $i, attachment_id: $a}')" \
+  StorageObjectMissingError
+echo "ok: confirm before upload is StorageObjectMissingError"
+
 post_to_s3 "$(jq -c .upload <<<"$initiated")" "$tmp/attachment.txt"
 echo "ok: attachment bytes accepted by S3"
 
