@@ -1,8 +1,7 @@
-from botocore.exceptions import ClientError
 from pl8_base.errors import EventSendError
 from pl8_base.util import send_event
 
-from pl8_stream_handler.mapping import events_for_record
+from pl8_stream_handler.mapping import events_for_record, is_ttl_expiry
 
 # Fields every event carries as part of its envelope. What is left is the ids
 # naming what the event is about.
@@ -50,13 +49,15 @@ class StreamManager:
         """
         for record in event["Records"]:
             sequence_number = record["dynamodb"]["SequenceNumber"]
+            # Tells a TTL expiry apart from a caller's delete in the logs.
+            origin = {"removed_by": "ttl"} if is_ttl_expiry(record) else {}
 
             for pl8_event in events_for_record(record):
                 try:
                     send_event(events_client=self._events_client,
                                event=pl8_event, source=self._source,
                                event_bus_name=self._event_bus_name)
-                except (EventSendError, ClientError):
+                except EventSendError:
                     self._logger.exception("Failed to send event",
                                            event_type=type(pl8_event).__name__,
                                            event_id=pl8_event.event_id,
@@ -67,6 +68,6 @@ class StreamManager:
                 self._logger.info("Sent event",
                                   event_type=type(pl8_event).__name__,
                                   event_id=pl8_event.event_id,
-                                  **event_fields(pl8_event))
+                                  **event_fields(pl8_event), **origin)
 
         return {"batchItemFailures": []}

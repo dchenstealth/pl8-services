@@ -1,4 +1,3 @@
-from aws_lambda_powertools import Logger
 from pl8_base.types import (
     IssueAttachment,
     IssueAttachmentDeleted,
@@ -11,8 +10,6 @@ from pl8_base.types import (
     IssueReady,
     IssueStatus,
 )
-
-logger = Logger(child=True)
 
 ISSUE_INFO_SK = IssueInfo.KEY_ATTRS["SK"]
 
@@ -102,7 +99,7 @@ def _attachment_row(image):
     }
 
 
-def _is_ttl_expiry(record):
+def is_ttl_expiry(record):
     """Whether DynamoDB, rather than a caller, removed the row."""
     return record.get("userIdentity", {}).get(
         "principalId") == TTL_PRINCIPAL_ID
@@ -137,15 +134,9 @@ def events_for_record(record):
     if event_name == "REMOVE":
         old_image = ddb.get("OldImage")
 
-        # A TTL expiry arrives as an ordinary REMOVE and is deliberately
-        # mapped like any other: an attachment whose upload never completed
-        # leaves a PENDING row and an object nobody will ever confirm, and the
-        # IssueAttachmentDeleted below is exactly how both get reaped. Logged
-        # only so the two are distinguishable after the fact.
-        if _is_ttl_expiry(record):
-            logger.info("Row removed by TTL expiry",
-                        sort_key=ddb.get("Keys", {}).get("SK", {}).get("S"))
-
+        # A TTL expiry is mapped like any other REMOVE: the
+        # IssueAttachmentDeleted it produces is what reaps an abandoned
+        # upload's object. The manager logs which removals were expiries.
         comment = _comment_row(old_image)
         if comment:
             return [IssueCommentDeleted(**comment)]

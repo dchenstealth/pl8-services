@@ -5,6 +5,7 @@ from botocore.exceptions import ClientError
 from conftest import (
     ISSUE_ID,
     SPACE_ID,
+    TTL_USER_IDENTITY,
     FakeEventsClient,
     attachment_image,
     comment_image,
@@ -66,6 +67,8 @@ def test_failed_entry_stops_batch_at_that_record(logger):
 
 
 def test_client_error_stops_batch_at_that_record(logger):
+    """send_event wraps a failed call in EventSendError, so this is the same
+    path as a failed entry."""
     exc = ClientError({"Error": {"Code": "ThrottlingException", "Message": "slow down"}},
                       "PutEvents")
     client = FakeEventsClient(fail_on=0, raise_exc=exc)
@@ -93,6 +96,31 @@ def test_deleted_child_row_sends_its_own_id(logger, image_fn, detail_type, id_at
     [entry] = client.entries
     assert entry["DetailType"] == detail_type
     assert json.loads(entry["Detail"])[id_attr] == image[id_attr]["S"]
+
+
+def sent_event_logs(caplog):
+    return [r for r in caplog.records if r.getMessage() == "Sent event"]
+
+
+def test_ttl_expiry_is_marked_on_the_sent_event_log(logger, caplog):
+    image = attachment_image()
+
+    manager(FakeEventsClient(), logger).handle_event({"Records": [
+        record("REMOVE", old=image, user_identity=TTL_USER_IDENTITY)]})
+
+    [log] = sent_event_logs(caplog)
+    assert log.removed_by == "ttl"
+    assert log.space_id == SPACE_ID
+    assert log.issue_id == ISSUE_ID
+    assert log.attachment_id == image["attachment_id"]["S"]
+
+
+def test_a_callers_delete_is_not_marked(logger, caplog):
+    manager(FakeEventsClient(), logger).handle_event({"Records": [
+        record("REMOVE", old=attachment_image())]})
+
+    [log] = sent_event_logs(caplog)
+    assert not hasattr(log, "removed_by")
 
 
 def test_event_fields_are_the_events_own_ids():
