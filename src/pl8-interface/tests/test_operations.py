@@ -117,6 +117,18 @@ def test_transition_issue(invoke, space):
     assert response["data"]["status"] == "IN_PROGRESS"
 
 
+@pytest.mark.parametrize("field, other", [("title", "description"),
+                                          ("description", "title")])
+def test_update_issue_changes_one_field_alone(invoke, space, field, other):
+    issue = create_issue(invoke)
+
+    response = invoke("update_issue", space_id="ENG",
+                      issue_id=issue["issue_id"], **{field: "new"})
+    assert response["ok"] is True
+    assert response["data"][field] == "new"
+    assert response["data"][other] == issue[other]
+
+
 def test_transition_out_of_done_maps_ddb_error(invoke, space):
     issue = create_issue(invoke, status="DONE")
 

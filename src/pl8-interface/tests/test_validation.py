@@ -28,6 +28,9 @@ def test_unknown_operation(interface, operation):
     ("get_spaces", {"limit": 101}),
     ("create_issue", {"space_id": "ENG", "title": "t", "description": "d",
                       "status": "WONTFIX"}),
+    ("update_issue", {"space_id": "ENG", "issue_id": "abc123"}),
+    ("update_issue", {"space_id": "ENG", "issue_id": "abc123",
+                      "version": 1}),
     # An attachment must name a size, and an empty or oversized one is
     # rejected here rather than by S3 after the caller has the target.
     ("initiate_issue_attachment_upload",
