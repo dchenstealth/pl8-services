@@ -93,11 +93,15 @@ module "pl8_interface" {
       # Without ListBucket, S3 answers a HEAD for a missing key with 403
       # rather than 404, so confirming before the upload lands would be an
       # internal error instead of the StorageObjectMissingError a caller can
-      # retry. Not scoped to the space/ prefix: S3 decides 403 or 404 without
-      # a prefix to evaluate. Keys carry only ids.
+      # retry. Limited to the attachment keyspace, like the object grant.
       sid       = "PL8AttachmentBucketList"
       actions   = ["s3:ListBucket"]
       resources = [aws_s3_bucket.pl8_bucket.arn]
+      conditions = [{
+        test     = "StringLike"
+        variable = "s3:prefix"
+        values   = ["space/*"]
+      }]
     },
   ]
 

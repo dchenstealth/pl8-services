@@ -42,6 +42,15 @@ data "aws_iam_policy_document" "execution" {
       effect    = "Allow"
       actions   = statement.value.actions
       resources = statement.value.resources
+
+      dynamic "condition" {
+        for_each = statement.value.conditions
+        content {
+          test     = condition.value.test
+          variable = condition.value.variable
+          values   = condition.value.values
+        }
+      }
     }
   }
 }
