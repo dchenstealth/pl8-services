@@ -50,6 +50,11 @@ variable "policy_statements" {
     sid       = string
     actions   = list(string)
     resources = list(string)
+    conditions = optional(list(object({
+      test     = string
+      variable = string
+      values   = list(string)
+    })), [])
   }))
   description = "Allow statements granted to the function's role, beyond writing to its own log group"
 }
