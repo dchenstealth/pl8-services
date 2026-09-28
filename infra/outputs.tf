@@ -57,3 +57,11 @@ output "pl8_event_handler_dlq_arn" {
   value       = aws_sqs_queue.event_handler_dlq.arn
   description = "ARN of the pl8-event-handler dead-letter queue"
 }
+
+output "pl8_space_queues" {
+  value = {
+    for space_id, queue in aws_sqs_queue.space :
+    space_id => { url = queue.url, arn = queue.arn }
+  }
+  description = "Per-space event queues from space_queues/<environment>.yaml, by space id"
+}

@@ -23,6 +23,7 @@ Managed with [OpenTofu](https://opentofu.org/):
 - The `pl8-interface`, `pl8-stream-handler` and `pl8-event-handler`
   Lambdas (see below), plus their event source mappings
 - A dead-letter queue for records `pl8-stream-handler` fails to publish
+- Per-space event queues for watchers (see below)
 - CloudWatch alarms on both dead-letter queues (notify via
   `alarm_actions`)
 - A Lambda layer holding the third-party dependencies shared by every
@@ -57,6 +58,7 @@ this repo.
 
 ```
 DynamoDB stream ─▶ pl8-stream-handler ─▶ EventBridge bus ─┬─▶ core lifecycle rule ─▶ SQS ─▶ pl8-event-handler
+                                                          ├─▶ per-space rules ─▶ per-space SQS ─▶ watchers
                                                           └─▶ IssueReady, for external consumers' own rules
 ```
 
@@ -88,6 +90,26 @@ onto the bus. See
 Consumes the core lifecycle events from SQS and applies them with pl8-base's
 `handle_*` methods. See
 [`src/pl8-event-handler/README.md`](src/pl8-event-handler/README.md).
+
+### Per-space event queues
+
+`infra/space_queues/<environment>.yaml` lists the Spaces a watcher can
+long poll for events. Each entry gets an SQS queue,
+`<environment>-pl8-space-<space_id>`, and an EventBridge rule delivering
+that Space's named events onto it:
+
+```yaml
+spaces:
+  - space_id: ENG            # the Space's id; events carry the id, not the name
+    events: [IssueReady]     # any event type in pl8-docs events.md
+    message_retention_seconds: 345600
+    receive_wait_time_seconds: 20   # long poll wait, 0 to 20
+```
+
+A missing file means no space queues. Queues are tagged
+`Type=PL8SpaceQueue` and `SpaceId=<space_id>`; watchers' receive and
+delete permissions are granted against those tags outside this repo. The
+`pl8_space_queues` output maps each space id to its queue's URL and ARN.
 
 ## Deployment
 
