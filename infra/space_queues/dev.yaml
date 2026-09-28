@@ -1,0 +1,9 @@
+# Per-space SQS queues that watchers long poll for PL8 events. See
+# infra/space_queues.tf.
+#
+# Each entry:
+#   space_id: the Space's id (events carry the id, not the name)
+#   events: PL8 event types to deliver, e.g. IssueReady
+#   message_retention_seconds: 60 to 1209600
+#   receive_wait_time_seconds: 0 to 20; the long poll wait
+spaces: []
